@@ -288,6 +288,37 @@ const bookingsApi = require('./bookings').createBookingsApi({ db, sendJson, read
 accounts.setNotify(bookingsApi.notify);
 const adminApi = require('./admin').createAdminApi({ db, sendJson, readBody, notify: bookingsApi.notify, password: process.env.ADMIN_PASSWORD || '', accounts });
 
+// Admin panel alohida portda (asosiy: 3001). ADMIN_PORT=0 qilinsa — eski usulda sayt ichida: /admin
+const ADMIN_PORT = process.env.ADMIN_PORT === undefined ? PORT + 1 : Number(process.env.ADMIN_PORT);
+const ADMIN_SEPARATE = ADMIN_PORT > 0 && ADMIN_PORT !== PORT;
+const SITE_URL = 'http://localhost:' + PORT;
+const ADMIN_URL = ADMIN_SEPARATE ? 'http://localhost:' + ADMIN_PORT : SITE_URL + '/admin';
+
+const runAdmin = (req, res, pathname, url) => adminApi.handle(req, res, pathname, url, { siteUrl: SITE_URL }).catch(e => {
+  console.error('[admin] xato:', e.message);
+  sendJson(res, 500, { error: 'server' });
+});
+const runBookings = (req, res, pathname, url) => bookingsApi.handle(req, res, pathname, url).catch(e => {
+  console.error('[bookings] xato:', e.message);
+  sendJson(res, 500, { error: 'server' });
+});
+
+// ---------- Admin panel serveri (faqat admin sahifasi, uning fayllari va admin API) ----------
+const ADMIN_FILES = /^\/(css\/(styles|admin)\.css|js\/admin\.js|images\/[\w.-]+\.(png|jpg|svg))$/;
+const adminServer = ADMIN_SEPARATE && http.createServer((req, res) => {
+  let url;
+  try { url = new URL(req.url, 'http://localhost'); } catch (e) { return sendJson(res, 400, { error: 'bad_path' }); }
+  const pathname = url.pathname;
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Robots-Tag', 'noindex');
+  if (pathname.startsWith('/api/admin/')) return runAdmin(req, res, pathname, url);
+  if (pathname === '/api/events') return runBookings(req, res, pathname, url);   // jonli yangilanish
+  if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { error: 'method' });
+  if (pathname === '/' || pathname === '/admin.html') { req.url = '/admin.html'; return serveStatic(req, res); }
+  if (ADMIN_FILES.test(pathname)) return serveStatic(req, res);
+  return sendJson(res, 404, { error: 'not_found' });
+});
+
 const server = http.createServer((req, res) => {
   cors(req, res);
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
@@ -300,12 +331,11 @@ const server = http.createServer((req, res) => {
     });
   }
   if (pathname === '/api/chat') { handleChat(req, res); return; }
-  if (pathname.startsWith('/api/admin/')) {
-    adminApi.handle(req, res, pathname, url).catch(e => {
-      console.error('[admin] xato:', e.message);
-      sendJson(res, 500, { error: 'server' });
-    });
-    return;
+  // Admin alohida portda bo'lsa — sayt portidan admin umuman ochilmaydi
+  if (pathname.startsWith('/api/admin/') || pathname === '/admin' || pathname === '/admin/' || pathname === '/admin.html' || pathname === '/js/admin.js') {
+    if (ADMIN_SEPARATE) return sendJson(res, 404, { error: 'not_found' });
+    if (pathname.startsWith('/api/admin/')) return runAdmin(req, res, pathname, url);
+    if (pathname !== '/js/admin.js') { req.url = '/admin.html'; return serveStatic(req, res); }
   }
   if (pathname === '/api/tariffs' || pathname.startsWith('/api/agency/')) {
     accounts.handle(req, res, pathname).catch(e => {
@@ -314,7 +344,6 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
-  if (pathname === '/admin' || pathname === '/admin/') { req.url = '/admin.html'; return serveStatic(req, res); }
   if (pathname === '/api/events' || pathname.startsWith('/api/bookings')) {
     bookingsApi.handle(req, res, pathname, url).catch(e => {
       console.error('[bookings] xato:', e.message);
@@ -332,7 +361,7 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('  AI model:                 ' + CHAT_MODEL + (GUARD_ON ? '  (mavzu tekshiruvi: ' + GUARD_MODEL + ')' : ''));
   console.log('  Claude API kaliti:        ' + (API_KEY ? 'bor' : "YO'Q — .env fayliga ANTHROPIC_API_KEY yozing"));
   console.log('  Baza:                     ' + path.relative(ROOT, DB_FILE) + '  (faol bronlar: ' + db.listActive().length + ')');
-  console.log('  Admin panel:              ' + (adminApi.enabled ? 'http://localhost:' + PORT + '/admin' : "O'CHIQ — .env fayliga ADMIN_PASSWORD yozing"));
+  console.log('  Admin panel:              ' + (adminApi.enabled ? ADMIN_URL : "O'CHIQ — .env fayliga ADMIN_PASSWORD yozing"));
   console.log('  To\'lov rejimi:            ' + (accounts.mode === 'demo'
     ? "DEMO — to'lov pulsiz tasdiqlanadi! Haqiqiy saytda PAYMENT_MODE=manual qiling"
     : "manual — admin to'lovni qo'lda tasdiqlaydi"));
@@ -340,9 +369,17 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('');
 });
 server.on('error', (e) => {
-  if (e.code === 'EADDRINUSE') console.error('Port ' + PORT + " band. .env faylida boshqa PORT yozing (masalan, PORT=3001).");
+  if (e.code === 'EADDRINUSE') console.error('Port ' + PORT + " band. .env faylida boshqa PORT yozing (masalan, PORT=3005).");
   else console.error(e);
   process.exit(1);
 });
+if (adminServer) {
+  adminServer.listen(ADMIN_PORT, '127.0.0.1');
+  adminServer.on('error', (e) => {
+    if (e.code === 'EADDRINUSE') console.error('Admin porti ' + ADMIN_PORT + " band. .env faylida boshqa ADMIN_PORT yozing (masalan, ADMIN_PORT=3011).");
+    else console.error(e);
+    process.exit(1);
+  });
+}
 // To'xtatilganda baza to'g'ri yopiladi
 ['SIGINT', 'SIGTERM'].forEach(sig => process.on(sig, () => { try { db.close(); } catch (e) { /* yopilgan */ } process.exit(0); }));

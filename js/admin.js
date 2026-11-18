@@ -29,6 +29,7 @@
     bq: '', bstatus: 'active', bproduct: '', aq: '', afilter: 'all', pfilter: 'pending', busy: false
   };
   let es = null;
+  let siteUrl = '/';                 // sayt manzili (admin alohida portda bo'lsa — http://localhost:3000)
 
   // ---------- Yordamchilar ----------
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -62,8 +63,8 @@
     }
   }
 
-  const logo = '<svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="9" fill="var(--accent)"></rect><path d="M17.8 6.5 9.5 17.6h5.6l-1.6 7.9 8.9-11.6h-5.8z" fill="#0E1A2B"></path></svg>';
-  const brand = `<div class="ad-brand">${logo}<span>Tez<span>Booking</span> <em>admin</em></span></div>`;
+  const logo = '<img class="logo-mark" src="/images/logo-mark-128.png" width="36" height="36" alt="">';
+  const brand = `<div class="ad-brand">${logo}<span>Tezbooking <em>admin</em></span></div>`;
 
   // ---------- Kirish va xabar ekranlari ----------
   function screen(title, text, form) {
@@ -105,7 +106,7 @@
     ${brand}
     <span class="ad-live" id="live"><i></i><span>Ulanmoqda…</span></span>
     <div class="ad-top-right">
-      <a class="btn btn-ghost btn-sm" href="/">Saytga o'tish</a>
+      <a class="btn btn-ghost btn-sm" href="${esc(siteUrl)}" target="_blank" rel="noopener">Saytga o'tish</a>
       <button type="button" class="btn btn-ghost btn-sm" id="logout">Chiqish</button>
     </div>
   </div>
@@ -559,11 +560,12 @@
   // ---------- Boshlash ----------
   (async function init() {
     if (!/^https?:$/.test(location.protocol)) {
-      screen('Server kerak', 'Admin panel faqat server orqali ishlaydi. Terminalda <code>npm start</code> ni ishga tushiring va <b>http://localhost:3000/admin</b> ni oching.');
+      screen('Server kerak', 'Admin panel faqat server orqali ishlaydi. Terminalda <code>npm start</code> ni ishga tushiring va <b>http://localhost:3001</b> ni oching.');
       return;
     }
     try {
       const me = await api('/me');
+      if (me.siteUrl) siteUrl = me.siteUrl;
       if (me.authed) start(); else showLogin();
     } catch (err) {
       if (err.status === 503) screen('Admin panel o\'chiq', '<code>.env</code> fayliga <code>ADMIN_PASSWORD=...</code> qatorini yozing va serverni qayta ishga tushiring.');

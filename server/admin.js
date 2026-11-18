@@ -70,7 +70,8 @@ function createAdminApi({ db, sendJson, readBody, notify, password, accounts }) 
   }
   const keyOf = (body) => (body && typeof body.key === 'string' && body.key.length <= 300 ? body.key : '');
 
-  async function handle(req, res, pathname, url) {
+  async function handle(req, res, pathname, url, opts) {
+    const siteUrl = (opts && opts.siteUrl) || '/';
     if (!enabled) return sendJson(res, 503, { error: 'admin_disabled' });
     const route = pathname.slice('/api/admin'.length);
 
@@ -92,7 +93,7 @@ function createAdminApi({ db, sendJson, readBody, notify, password, accounts }) 
       res.setHeader('Set-Cookie', cookie('', 0));
       return sendJson(res, 200, { ok: true });
     }
-    if (route === '/me') return sendJson(res, 200, { authed: authed(req) });
+    if (route === '/me') return sendJson(res, 200, { authed: authed(req), siteUrl });
 
     if (!authed(req)) return sendJson(res, 401, { error: 'unauthorized' });
 

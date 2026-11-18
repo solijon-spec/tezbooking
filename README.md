@@ -44,7 +44,7 @@ Hech narsa o'rnatish shart emas.
 | `server/accounts.js` | Tur firmalar (login/parol), tariflar, to'lovlar |
 | `js/account.js` | Saytda: tur firma kirishi, tariflar oynasi, to'lov |
 | `admin.html`, `js/admin.js`, `css/admin.css` | Admin panel sahifasi (`/admin`) |
-| `images/` | Sayt rasmlari (JPG, 960px): `country-<id>.jpg` — davlatlar, `hotel-resort-1..4` / `hotel-city-1..2` — mehmonxonalar (umumiy, AI bilan yaratilgan), `flight-plane.jpg` — aviachiptalar banneri |
+| `images/` | Sayt rasmlari (JPG, 960px): `country-<id>.jpg` — davlatlar, `hotel-resort-1..4` / `hotel-city-1..2` — mehmonxonalar (umumiy, AI bilan yaratilgan), `flight-plane.jpg` — aviachiptalar banneri. Logo: `logo.jpg` (asl, to'liq), `logo-mark.png` (belgi, 512px), `logo-mark-128.png` (sayt sarlavhasi), `favicon-32.png`, `apple-touch-icon.png` |
 | `package.json` | `npm start` buyrug'i (qo'shimcha paket yo'q) |
 | `.env.example` | Sozlamalar namunasi — undan `.env` faylini yasaysiz |
 
@@ -123,7 +123,7 @@ Bazani zaxiralash: server to'xtatilganda `data/` papkasidan nusxa oling.
 
 ## Admin panel
 
-Manzil: **http://localhost:3000/admin** (faqat server orqali ishlaydi).
+Manzil: **http://localhost:3001** — saytdan alohida port (faqat server orqali ishlaydi). Sayt portidan (`3000/admin`) admin ochilmaydi. Portni `.env` dagi `ADMIN_PORT` bilan o'zgartirish mumkin.
 
 1. `.env` fayliga parol yozing: `ADMIN_PASSWORD=...` (kamida 12 belgi). Parol bo'lmasa, admin panel o'chiq.
 2. Serverni qayta ishga tushiring: `npm start`.
