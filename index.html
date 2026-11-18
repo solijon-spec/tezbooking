@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TezBooking — turlarni qidirish</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <!-- Butun interfeys js/app.js ichida chiziladi -->
+  <div id="app"></div>
+
+  <noscript>Sayt ishlashi uchun JavaScript yoqilgan bo'lishi kerak. / Для работы сайта включите JavaScript. / Please enable JavaScript.</noscript>
+
+  <!-- 1) Tillar: o'zbekcha, ruscha, inglizcha matnlar -->
+  <script src="js/i18n.js"></script>
+  <!-- 2) Demo ma'lumotlar va narx hisoblash (keyin operatorlar API bilan almashtiriladi) -->
+  <script src="js/data.js"></script>
+  <!-- Aylanma sana tanlagich (bron qilingan kunlar qizil) -->
+  <script src="js/wheel.js"></script>
+  <!-- Bronlarni server bazasi bilan sinxronlash (server bo'lmasa — brauzerda saqlanadi) -->
+  <script src="js/sync.js"></script>
+  <!-- Tur firma akkaunti: kirish, tariflar va to'lov -->
+  <script src="js/account.js"></script>
+  <!-- 3) Interfeys: holat (state), chizish (render) va hodisalar -->
+  <script src="js/app.js"></script>
+  <!-- 4) AI yordamchi (chat). Server: server/server.js — README, «AI chat» bo'limi -->
+  <div id="chat-root"></div>
+  <script src="js/chat.js"></script>
+</body>
+</html>

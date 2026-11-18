@@ -1,0 +1,129 @@
+/* TezBooking — admin panel (admin.html). Asosiy ranglar va tugmalar css/styles.css dan olinadi. */
+
+code { font-size: 13px; background: #E9EDF3; padding: 1px 6px; border-radius: 6px; }
+
+/* ---------- Brend ---------- */
+.ad-brand { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 800; font-size: 20px; }
+.ad-brand > span > span { color: var(--accent); }
+.ad-brand em { font-style: normal; font-family: var(--font); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 3px 8px; border-radius: 999px; background: var(--accent); color: var(--navy); vertical-align: 3px; margin-left: 4px; }
+
+/* ---------- Kirish ekrani ---------- */
+.ad-center { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.ad-login { width: 100%; max-width: 400px; padding: 28px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 12px 40px rgba(14, 26, 43, 0.08); }
+.ad-login .ad-brand { margin-bottom: 8px; }
+.ad-login p { margin: 0; }
+.ad-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.ad-form .btn { min-height: 48px; }
+.ad-error { margin: 0; min-height: 1.2em; color: #A12020; font-size: 13px; font-weight: 600; }
+
+/* ---------- Yuqori panel ---------- */
+.ad-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding-top: 12px; padding-bottom: 12px; color: #fff; }
+.ad-top-right { margin-left: auto; display: flex; gap: 8px; }
+.ad-live { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #C9D3E0; }
+.ad-live i { width: 8px; height: 8px; border-radius: 50%; background: #9AA6B8; }
+.ad-live.on i { background: #3DD68C; box-shadow: 0 0 0 4px rgba(61, 214, 140, 0.2); animation: ad-pulse 2s infinite; }
+@keyframes ad-pulse { 50% { box-shadow: 0 0 0 7px rgba(61, 214, 140, 0); } }
+
+.ad-main { display: flex; flex-direction: column; gap: 20px; }
+
+/* ---------- Ko'rsatkichlar ---------- */
+.ad-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 12px; }
+.ad-tile { padding: 16px; display: flex; flex-direction: column; gap: 4px; }
+.ad-tile strong { font-family: var(--display); font-size: 28px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ad-products { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+.ad-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 13px; background: #E9EDF3; white-space: nowrap; }
+.ad-p-tour { background: #FFF1DB; color: #6B3A00; }
+.ad-p-hotel { background: #E3EDFF; color: #1E3A8A; }
+.ad-p-flight { background: #E0F5EC; color: #0B5D3B; }
+
+/* ---------- Jadval ---------- */
+.ad-table-card { padding: 18px; }
+.ad-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.ad-toolbar .h2 { margin-right: auto; display: flex; align-items: center; gap: 8px; }
+.ad-search { width: 260px; max-width: 100%; }
+.ad-select { width: auto; }
+.ad-scroll { overflow-x: auto; }
+.ad-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ad-table th { text-align: left; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.ad-table td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.ad-table tbody tr:hover { background: #F8FAFC; }
+.ad-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.ad-table tr.is-off td:not(.ad-actions) { color: var(--muted); }
+.ad-table tr.is-off b { text-decoration: line-through; }
+.ad-sub { display: block; }
+.ad-actions { text-align: right; }
+.ad-actions .btn + .btn { margin-left: 6px; }
+.ad-danger { color: #A12020; border-color: #F2C4C4; }
+.ad-danger:hover { background: #FDF0F0; }
+.ad-empty { padding: 24px 0; text-align: center; margin: 0; }
+
+.ad-status { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.ad-s-ok { background: #E0F5EC; color: #0B5D3B; }
+.ad-s-now { background: #FFF1DB; color: #6B3A00; }
+.ad-s-past { background: #E9EDF3; color: #3D4A5C; }
+.ad-s-off { background: #FDE8E8; color: #A12020; }
+
+/* ---------- Tarix oynasi ---------- */
+.ad-dialog { border: 0; border-radius: 18px; padding: 22px; width: min(520px, calc(100vw - 32px)); color: var(--navy); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25); }
+.ad-dialog::backdrop { background: rgba(14, 26, 43, 0.5); }
+.ad-events { margin: 12px 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.ad-key { word-break: break-all; }
+
+/* ---------- Bo'limlar (tablar) ---------- */
+.ad-tabs { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 0; scrollbar-width: none; }
+.ad-tabs::-webkit-scrollbar { display: none; }
+.ad-tabs a { color: #C9D3E0; text-decoration: none; padding: 0 14px; min-height: var(--tap); display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 10px 10px 0 0; font-weight: 600; font-size: 14px; white-space: nowrap; }
+.ad-tabs a:hover { color: #fff; }
+.ad-tabs a[aria-current="page"] { background: var(--bg); color: var(--navy); }
+
+.ad-banner { margin-top: 16px; padding: 12px 16px; border-radius: 12px; background: #FFF4E0; color: #6B3A00; border: 1px solid #F3D9A8; font-size: 14px; }
+.ad-notice { margin-top: 12px; padding: 12px 16px; background: #FFF8EC; border-color: #F3D9A8; font-size: 14px; }
+.ad-hint { margin: -4px 0 12px; }
+.ad-tile-link { text-decoration: none; color: inherit; transition: border-color 0.15s; }
+.ad-tile-link:hover { border-color: var(--navy); }
+.ad-s-wait { background: #FFF1DB; color: #6B3A00; }
+
+/* ---------- Formalar ---------- */
+.ad-grid-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; align-items: end; margin-top: 12px; }
+.ad-grid-form label, .ad-form label { display: flex; flex-direction: column; gap: 4px; }
+.ad-grid-form .btn { min-height: var(--tap); }
+.ad-inline { display: inline-flex; gap: 6px; vertical-align: middle; margin-right: 6px; }
+.ad-inline .input { width: auto; max-width: 210px; }
+.ad-actions { display: table-cell; }
+.ad-actions .btn { margin: 2px 0; }
+
+/* ---------- Tariflar ---------- */
+.ad-tariffs { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.ad-tariff { padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+.ad-tariff label { display: flex; flex-direction: column; gap: 4px; }
+.ad-tariff .check { flex-direction: row; align-items: center; gap: 8px; }
+
+/* ---------- Login/parol oynasi ---------- */
+.ad-cred { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 14px 0 18px; padding: 14px 16px; border-radius: 12px; background: #F4F6F9; }
+.ad-cred dt { font-weight: 700; color: var(--muted); }
+.ad-cred dd { margin: 0; }
+.ad-cred code { font-size: 17px; background: transparent; padding: 0; user-select: all; }
+
+/* ---------- Xabar ---------- */
+.ad-toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; z-index: 50;
+  max-width: calc(100vw - 32px); padding: 12px 18px; border-radius: 12px; background: var(--navy); color: #fff; font-weight: 600; font-size: 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2); transition: opacity 0.2s, transform 0.2s; }
+.ad-toast.show { opacity: 1; transform: translate(-50%, 0); }
+.ad-toast.bad { background: #A12020; }
+
+/* ---------- Telefon: jadval qatorlari kartaga aylanadi ---------- */
+@media (max-width: 760px) {
+  .ad-search { width: 100%; }
+  .ad-table thead { display: none; }
+  .ad-table, .ad-table tbody, .ad-table tr, .ad-table td { display: block; }
+  .ad-table tr { border: 1px solid var(--line); border-radius: 14px; padding: 6px 12px; margin-bottom: 10px; }
+  .ad-table td { border: 0; padding: 6px 0; display: flex; justify-content: space-between; gap: 12px; text-align: right; }
+  .ad-table td::before { content: attr(data-th); font-size: 12px; font-weight: 700; color: var(--muted); text-align: left; }
+  .ad-table td.ad-actions { justify-content: flex-end; flex-wrap: wrap; gap: 6px; padding-top: 10px; }
+  .ad-inline { margin-right: 0; }
+  .ad-table td.ad-actions::before { content: none; }
+  .ad-table .num { text-align: right; }
+}

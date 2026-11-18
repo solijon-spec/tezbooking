@@ -1,0 +1,5 @@
+# API kaliti saqlanadigan fayl — hech qachon yuklamang
+.env
+node_modules/
+# Bronlar bazasi (mijozlar ma'lumoti) — yuklamang
+data/
