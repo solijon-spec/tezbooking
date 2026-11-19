@@ -294,8 +294,8 @@
   // ---------- Aviachiptalar ----------
   function passFlight(f) {
     if (state.fAir[f.al.id] === false) return false;
-    if (state.fDirect && !f.direct) return false;
-    if (state.fBag && f.bag === 'hand') return false;
+    if (state.fDirect && f.direct !== true) return false;
+    if (state.fBag && !['b20', 'b23', 'b2x32'].includes(f.bag)) return false;
     return true;
   }
 
@@ -320,11 +320,15 @@
     const paxLabel = guestsLabel(state.adults, state.childAges, 1);
     const fromC = fromName(state.from), toC = cityName(ap.city);
     const inOffer = (k) => state.offer.some(x => x.key === k);
-    const legV = (l, no, a, b, ca, cb) => ({
-      no, date: wd(l.date) + ', ' + fmtDay(l.date), dep: hm(l.dep), arr: hm(l.arr), plus: l.days > 0 ? '+' + l.days : '',
-      dur: durLabel(l.dur), stops: l.via ? t('stop_via', { c: l.via }) : t('direct'), direct: !l.via,
-      from: a, to: b, fromCity: ca, toCity: cb
-    });
+    const legV = (l, no, a, b, ca, cb) => {
+      const direct = l.direct === null ? null : (typeof l.direct === 'boolean' ? l.direct : !l.via);
+      return {
+        no, date: wd(l.date) + ', ' + fmtDay(l.date), dep: hm(l.dep), arr: hm(l.arr), plus: l.days > 0 ? '+' + l.days : '',
+        dur: durLabel(l.dur),
+        stops: direct === null ? t('flight_info_unknown') : direct ? t('direct') : (l.via ? t('stop_via', { c: l.via }) : t('flight_info_unknown')),
+        direct, from: a, to: b, fromCity: ca, toCity: cb
+      };
+    };
 
     const flights = list.map(f => ({
       key: f.key, airline: f.al.name, color: f.al.color, no: f.no,
@@ -814,7 +818,7 @@
           <div class="leg-pt"><span class="time">${esc(l.dep)}</span><span class="xs muted">${esc(l.from)} · ${esc(l.fromCity)}</span></div>
           <div class="leg-mid">
             <span class="xs muted">${esc(l.dur)}</span>
-            <span class="leg-line${l.direct ? '' : ' stop'}" aria-hidden="true"></span>
+            <span class="leg-line${l.direct === false ? ' stop' : ''}" aria-hidden="true"></span>
             <span class="xs ${l.direct ? 'leg-direct' : 'muted'}">${esc(l.stops)}</span>
           </div>
           <div class="leg-pt end"><span class="time">${esc(l.arr)}${l.plus ? `<sup>${esc(l.plus)}</sup>` : ''}</span><span class="xs muted">${esc(l.to)} · ${esc(l.toCity)}</span></div>

@@ -24,7 +24,7 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 loadEnv(path.join(ROOT, '.env'));
-const { clientIp } = require('./net');       // .env o'qilgandan keyin (TRUST_PROXY, COOKIE_SECURE)
+const { clientIp, secureAttr } = require('./net'); // .env o'qilgandan keyin (TRUST_PROXY, COOKIE_SECURE)
 
 // Haqiqiy serverda (NODE_ENV=production) demo to'lov rejimi taqiqlanadi: aks holda hamma pulsiz tarif olib qoladi
 if (process.env.NODE_ENV === 'production' && (process.env.PAYMENT_MODE || 'manual').trim() === 'demo') {
@@ -32,6 +32,15 @@ if (process.env.NODE_ENV === 'production' && (process.env.PAYMENT_MODE || 'manua
   process.exit(1);
 }
 const DB_FILE = path.resolve(ROOT, process.env.DB_FILE || 'data/tezbooking.db');
+const OWNER_DB_FILE = path.resolve(ROOT, process.env.OWNER_DB_FILE || 'data/owner-os.db');
+const sameDbPath = process.platform === 'win32'
+  ? OWNER_DB_FILE.toLowerCase() === DB_FILE.toLowerCase()
+  : OWNER_DB_FILE === DB_FILE;
+if (sameDbPath) throw new Error('OWNER_DB_FILE must be separate from DB_FILE.');
+const OWNER_EMAIL = 'solisulhiddinov@gmail.com';
+if (process.env.OWNER_EMAIL && process.env.OWNER_EMAIL.trim().toLowerCase() !== OWNER_EMAIL) {
+  throw new Error('OWNER_EMAIL is fixed to the designated Owner account.');
+}
 
 const PORT = Number(process.env.PORT) || 3000;
 const API_KEY = (process.env.ANTHROPIC_API_KEY || '').trim();
@@ -290,11 +299,40 @@ if (typeof fetch !== 'function') {
 let db;
 try { db = require('./db').open(DB_FILE); }
 catch (e) { console.error('Bazani ochib bo\'lmadi: ' + e.message); process.exit(1); }
+let ownerDb;
+try { ownerDb = require('./owner/db').open(OWNER_DB_FILE); }
+catch (e) { console.error('Owner bazasini ochib bo\'lmadi: ' + e.message); process.exit(1); }
 const accounts = require('./accounts').createAccounts({ db, sendJson, readBody, paymentMode: (process.env.PAYMENT_MODE || 'manual').trim() });
 const bookingsApi = require('./bookings').createBookingsApi({ db, sendJson, readBody, accounts });
 accounts.setNotify(bookingsApi.notify);
-const live = require('./live').createLive({ sendJson });     // operatorlardan haqiqiy narxlar
+const live = require('./live').createLive({ sendJson, clientIp }); // operatorlardan haqiqiy narxlar
 const adminApi = require('./admin').createAdminApi({ db, sendJson, readBody, notify: bookingsApi.notify, password: process.env.ADMIN_PASSWORD || '', accounts });
+const ownerAuth = require('./owner/auth').createOwnerAuth({
+  email: OWNER_EMAIL,
+  passwordHash: process.env.OWNER_PASSWORD_HASH || '',
+  secure: secureAttr
+});
+let ownerApi;
+const ownerService = require('./owner/service').createOwnerService({
+  db: ownerDb,
+  emit: event => { if (ownerApi) ownerApi.emit(event); }
+});
+const ownerWorkers = require('./owner/worker-registry').createWorkerRegistry();
+const ownerScheduler = require('./owner/scheduler').createScheduler({ service: ownerService, workers: ownerWorkers });
+const llmEnabled = ['1', 'true', 'on'].includes(String(process.env.AGENT_LLM_ENABLED || '').trim().toLowerCase());
+const ownerLlmParser = require('./owner/agent/llm').createLlmParser({
+  enabled: llmEnabled,
+  provider: process.env.AGENT_LLM_PROVIDER || 'anthropic',
+  model: process.env.AGENT_LLM_MODEL,
+  apiKey: process.env.AGENT_LLM_API_KEY || ''
+});
+const mainAgent = require('./owner/agent/main').createMainAgent({
+  service: ownerService, workers: ownerWorkers, scheduler: ownerScheduler, llmParser: ownerLlmParser
+});
+ownerApi = require('./owner').createOwnerApi({
+  service: ownerService, auth: ownerAuth, sendJson, readBody, clientIp, agent: mainAgent, scheduler: ownerScheduler
+});
+ownerScheduler.start();
 
 // Admin panel alohida portda (asosiy: 3001). ADMIN_PORT=0 qilinsa — eski usulda sayt ichida: /admin
 const ADMIN_PORT = process.env.ADMIN_PORT === undefined ? PORT + 1 : Number(process.env.ADMIN_PORT);
@@ -333,6 +371,25 @@ const server = http.createServer((req, res) => {
   let url;
   try { url = new URL(req.url, 'http://localhost'); } catch (e) { return sendJson(res, 400, { error: 'bad_path' }); }
   const pathname = url.pathname;
+  if (pathname === '/owner' || pathname === '/owner/' || pathname === '/owner.html') {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.setHeader('Allow', 'GET, HEAD');
+      return sendJson(res, 405, { error: 'method_not_allowed' });
+    }
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+    req.url = '/owner.html';
+    return serveStatic(req, res);
+  }
+  if (pathname === '/api/owner' || pathname.startsWith('/api/owner/')) {
+    ownerApi.handle(req, res, pathname, url).catch(error => {
+      console.error('[owner] request failed:', error.code || 'internal');
+      sendJson(res, 500, { error: 'server' });
+    });
+    return;
+  }
   if (pathname === '/api/health') {
     return sendJson(res, 200, {
       service: 'tezbooking-ai', ok: true, hasKey: !!API_KEY, model: CHAT_MODEL, guard: GUARD_ON ? GUARD_MODEL : null, bookings: true, live: true
@@ -377,6 +434,7 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('  Claude API kaliti:        ' + (API_KEY ? 'bor' : "YO'Q — .env fayliga ANTHROPIC_API_KEY yozing"));
   console.log('  Baza:                     ' + path.relative(ROOT, DB_FILE) + '  (faol bronlar: ' + db.listActive().length + ')');
   console.log('  Admin panel:              ' + (adminApi.enabled ? ADMIN_URL : "O'CHIQ — .env fayliga ADMIN_PASSWORD yozing"));
+  console.log('  Owner console:            ' + `http://localhost:${PORT}/owner` + (ownerAuth.enabled ? '  (Owner auth enabled)' : '  (O\'CHIQ — configure OWNER_PASSWORD_HASH)'));
   console.log('  To\'lov rejimi:            ' + (accounts.mode === 'demo'
     ? "DEMO — to'lov pulsiz tasdiqlanadi! Haqiqiy saytda PAYMENT_MODE=manual qiling"
     : "manual — admin to'lovni qo'lda tasdiqlaydi"));
@@ -397,4 +455,7 @@ if (adminServer) {
   });
 }
 // To'xtatilganda baza to'g'ri yopiladi
-['SIGINT', 'SIGTERM'].forEach(sig => process.on(sig, () => { try { db.close(); } catch (e) { /* yopilgan */ } process.exit(0); }));
+['SIGINT', 'SIGTERM'].forEach(sig => process.on(sig, () => {
+  try { ownerScheduler.close(); ownerApi.close(); ownerAuth.close(); ownerDb.close(); db.close(); } catch (e) { /* yopilgan */ }
+  process.exit(0);
+}));

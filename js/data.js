@@ -331,7 +331,9 @@
   OPS.forEach(o => { OP_BY_ID[o.id] = o; });
   const live = {};                 // sig -> { at, country, hotelIds: [], offers: { hotelId: [offer] }, ops: [...] }
   const LIVE_KEY = 'tezbooking.liveHotels';
-  const liveSig = (country, q, dateIso) => [country, dateIso, q.nights, q.adults, (q.childAges || []).join('.'), q.from].join('|');
+  // Oxirgi qism: jo'nash shahri (tur) yoki 'H' (faqat mehmonxona — reyssiz)
+  const tailOf = (q) => (q.noFlight ? 'H' : q.from);
+  const liveSig = (country, q, dateIso) => [country, dateIso, q.nights, q.adults, (q.childAges || []).join('.'), tailOf(q)].join('|');
   const slug = (s) => String(s).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/g, '');
   function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
   // Avval ko'rilgan haqiqiy mehmonxonalar (mijozga taklifda qolganlari sahifa yangilanganda ham ochilsin)
@@ -353,7 +355,7 @@
       const list = entry.offers[hid] || (entry.offers[hid] = []);
       if (!list.length) entry.hotelIds.push(hid);
       // Kalit formati demo bilan bir xil: mehmonxona|operator|sana|tunlar|kattalar|bolalar|xonalar|jo'nash
-      const key = [hid, r.opId + '.' + (r.roomKey || hash(r.room)) + '.' + (r.mealKey || r.meal), dateIso, q.nights, q.adults, (q.childAges || []).join('.'), 1, q.from].join('|');
+      const key = [hid, r.opId + '.' + (r.roomKey || hash(r.room)) + '.' + (r.mealKey || r.meal), dateIso, q.nights, q.adults, (q.childAges || []).join('.'), 1, tailOf(q)].join('|');
       const prev = list.find(o => o.key === key);
       if (prev && prev.price <= r.price) return;
       const offer = { key, op: OP_BY_ID[r.opId], meal: r.meal, mealRaw: r.mealRaw, room: r.room || 'std', price: r.price,
@@ -375,8 +377,46 @@
     return e ? e.hotelIds.map(id => HOTEL_BY_ID[id]) : [];
   }));
 
+  // ---------- Jonli aviachiptalar (operatorlarning charter/blok reyslari) ----------
+  // Har bir reys flightsFor() bilan bir xil ko'rinishda: sayt ikkalasini bir xil chizadi.
+  const liveF = {};                // sig -> { at, ops, flights }
+  const LIVE_AL = {};              // aviakompaniya nomi -> { id, name, code, color }
+  const AL_COLORS = ['#0057D8', '#009C9F', '#FF9600', '#7C3AED', '#DB2777', '#16A34A', '#B45309', '#0369A1'];
+  const liveFSig = (q, dateIso) => ['F', q.to, dateIso, q.ret || '', q.adults, (q.childAges || []).join('.'), q.cabin, q.from].join('|');
+  function airlineOf(name) {
+    const id = 'L' + slug(name || 'x');
+    if (!LIVE_AL[id]) {
+      const known = AIRLINES.find(a => slug(a.name) === slug(name));
+      LIVE_AL[id] = known || { id, name: name || '—', code: '', color: AL_COLORS[parseInt(hash(name || 'x'), 36) % AL_COLORS.length] };
+    }
+    return LIVE_AL[id];
+  }
+  const legOf = (l) => ({ date: l.date, dep: l.dep, arr: l.arr, days: l.arr < l.dep ? 1 : 0, dur: l.dur, via: null, direct: null });
+  function setLiveFlights(q, dateIso, data) {
+    const byKey = {};
+    (data.offers || []).forEach(o => {
+      if (o.date !== dateIso || !OP_BY_ID[o.opId] || !(o.price > 0) || o.seats === 'none' || (o.back && o.back.seats === 'none')) return;
+      const al = airlineOf(o.airline);
+      // Kalit formati demo bilan bir xil: F|aviakompaniya|reys|qayerdan|qayerga|uchish|qaytish|kattalar|bolalar|klass
+      const key = ['F', al.id, o.opId + '.' + o.freight, q.from, q.to, dateIso, q.ret || '', q.adults, (q.childAges || []).join('.'), q.cabin].join('|');
+      if (byKey[key] && byKey[key].price <= o.price) return;
+      byKey[key] = {
+        key, al, op: OP_BY_ID[o.opId], to: q.to, no: o.no, backNo: o.back ? o.back.no : '', aircraft: o.aircraft || '',
+        fromCode: o.fromCode, toCode: o.toCode, fromCity: o.fromCity, toCity: o.toCity,
+        out: legOf(o), back: o.back ? legOf(o.back) : null, direct: null,
+        bag: 'unknown', bagKg: null, price: o.price,
+        seats: ['ok', 'few', 'none'].includes(o.seats) ? o.seats : 'unknown', live: true
+      };
+    });
+    liveF[liveFSig(q, dateIso)] = { at: Date.now(), ops: data.operators || [], flights: Object.keys(byKey).map(k => byKey[k]) };
+    goneVer++;
+  }
+  const liveFEntry = (q, dateIso) => liveF[liveFSig(q, dateIso)] || null;
+  const liveFlights = (q, dateIso) => { const e = liveFEntry(q, dateIso); return e ? e.flights.filter(f => !isGone(f.key)) : []; };
+
   global.TB = { OPS, COUNTRIES, REGIONS, HOTELS, HOTEL_BY_ID, FROM, MEALS, ROOMS, AIRLINES, AIRPORTS, byId, UZS_RATE, date,
     offersFor: (h, q, dateIso) => (h.live ? liveOffersFor(h, q, dateIso) : offersFor(h, q, dateIso)),
     hotFor, flightsFor, isGone, setBooked, setClock: (fn) => { now = fn; },
-    live: { set: setLive, entry: liveEntry, hotels: liveHotels, sig: liveSig } };
+    live: { set: setLive, entry: liveEntry, hotels: liveHotels, sig: liveSig,
+      setFlights: setLiveFlights, flightEntry: liveFEntry, flights: liveFlights, fsig: liveFSig } };
 })(window);

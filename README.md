@@ -32,6 +32,16 @@ login'siz ochiq: server o'sha sahifa brauzerga beradigan so'rovni yuboradi, javo
 - "Mehmonxonalar" va "Aviachiptalar" bo'limlari hali demo narxlarda (manbalar API kaliti bilan ulanadi).
 - Internetdagi demo (GitHub Pages) serversiz ishlagani uchun u yerda demo narxlar ko'rsatiladi.
 
+### Live API xavfsizligi
+
+Live qidiruvi mijozlar uchun ochiq qoladi, shuning uchun u egasiga tegishli maxfiy API emas. Server qat'iy sana/yo'lovchi/yo'nalish tekshiruvi, IP va global daqiqalik limitlar, operatorlar bo'yicha parallelizm chegarasi, maksimal navbat va 25 soniyalik qidiruv muddati qo'llaydi. Operatorlarning xom xato matni API javobida berilmaydi.
+
+Tashqi so'rovlar faqat konfiguratsiyadagi operator hostiga yuboriladi: DNS natijalaridagi loopback/privat manzillar bloklanadi, IP ulanishdan oldin tekshiriladi va shu tekshirilgan IP'ga ulanadi. Redirect faqat shu operator origin'ida qolsa kuzatiladi. Prestige va Selfie manbalari hozirgi konfiguratsiyada HTTP ishlatgani sababli ular uchun trafik shifrlanmaydi; HTTPS manzili tasdiqlanmaguncha parol yoki maxfiy ma'lumot yuborilmasligi kerak.
+
+`LIVE_GLOBAL_CONCURRENCY`, `LIVE_OPERATOR_CONCURRENCY`, `LIVE_MAX_QUEUE`, `LIVE_RATE_PER_MIN`, `LIVE_GLOBAL_RATE_PER_MIN`, `LIVE_TIMEOUT_MS` sozlamalari `.env.example`-da berilgan. Standart qiymatlar: global 12/bitta operatorga 2, navbat 100, har bir IP uchun 20 va global 300 so'rov/daqiqa, qidiruv muddati 25 soniya. Limit to'lganda operator darajasida `busy` yoki HTTP `429` qaytadi.
+
+`node --test` xavfsizlik va normalizatsiya testlarini faqat lokal soxta adapter/transport bilan bajaradi; testlar operatorlarga so'rov yubormaydi. Kelajakdagi Main Agent/worker queue uchun live-search adapter va dispatch qatlamlari ajratilgan, ammo Phase 1 hali brauzer worker yoki AI orchestratorni joriy qilmaydi.
+
 ## Demo versiya
 
 **Internetda (o'rnatishsiz):** https://solijon-spec.github.io/tezbooking/
@@ -192,6 +202,28 @@ Firma parollari bazada scrypt xesh ko'rinishida saqlanadi.
 
 Xavfsizlik: parol faqat serverda, sessiya HttpOnly cookie'da (12 soat). Noto'g'ri parol daqiqasiga 5 martadan ko'p kiritilsa, kirish vaqtincha to'xtaydi.
 Server qayta ishga tushsa, qayta kirish kerak.
+
+## Owner Console va multi-agent foundation
+
+Manzil: **http://localhost:3000/owner**. Bu mavjud agentlik va mijoz sahifalaridan alohida, serverda autentifikatsiya qilinadigan Owner paneli.
+
+1. `.env` faylida `OWNER_EMAIL=solisulhiddinov@gmail.com` qoldiring va Owner parol xeshini yarating:
+   ```sh
+   npm run owner:password
+   ```
+   Buyruq parolni terminalda yashirin kiritadi. Chiqqan `scrypt$...` qiymatini `.env` dagi `OWNER_PASSWORD_HASH` ga qo'ying. Xom parolni faylga yoki kodga yozmang; kamida 12 belgili parol ishlating.
+2. `OWNER_DB_FILE=data/owner-os.db` mijozlarning `DB_FILE` bazasidan alohida bo'lishi shart. Owner migratsiyalari faqat shu alohida SQLite faylida ishlaydi.
+3. Serverni qayta ishga tushirib, `/owner` ni oching. Xesh sozlanmagan bo'lsa, Owner kirishi o'chirilgan qoladi.
+
+Paneldagi umumiy ko'rsatkichlar OS/process hamda Owner bazasidagi haqiqiy holatdan olinadi; mavjud bo'lmagan ishchi, narx yoki natija uydirilmaydi. 19 ta operator konfiguratsiyasi **pending** holatda qoladi; hech qanday haqiqiy supplier adapteri yoki browser worker o'rnatilmagan.
+
+Main Agent tuzilgan va tabiiy tildagi so'rovlarni tekshiradi, majburiy ma'lumot yetishmasa aniqlashtirish so'raydi va vazifalarni alohida Owner SQLite bazasida saqlaydi. Tabiiy til parseri deterministik tarzda ishlaydi. Ixtiyoriy LLM parseri `AGENT_LLM_ENABLED=1` va serverdagi `AGENT_LLM_API_KEY` bilan yoqiladi; kalit yo'q bo'lsa deterministik parser ishlaydi. LLM javob bermasa xato ochiq ko'rsatiladi, muvaffaqiyat sifatida yashirilmaydi.
+
+Doimiy navbat scheduler orqali ishlaydi: global va operator bo'yicha parallelizm, vaqt cheklovi, chegaralangan qayta urinishlar, bekor qilish va qayta ishga tushganda uzilgan vazifalarni tiklash qo'llab-quvvatlanadi. Owner panel vazifa holatini SSE orqali kuzatadi. Faqat ro'yxatga olingan adapteri bor, yoqilgan va `verified` operatorga dispatch qilinishi mumkin; hozir bunday adapterlar yo'q, shuning uchun dashboarddan berilgan qidiruvlar supplier saytlariga ulanmaydi. Adapterlar va supplier hisoblari bilan real qidiruvlar faqat alohida ruxsat etilgan integratsiya sinovlaridan so'ng amalga oshirilishi kerak.
+
+Fazaviy tekshiruvlar `npm test` orqali bajariladi. Scheduler hozir bitta jarayon va SQLite muhitiga mo'ljallangan; bir nechta server nusxasi, uzoq muddatli lease nazorati va haqiqiy adapterlarning tarmoq xavfsizligi Phase 4 uchun qo'shimcha arxitektura hamda sinovni talab qiladi.
+
+Owner sessiyasi scrypt parol tekshiruvi, HttpOnly/SameSite Strict cookie va ma'lumotni o'zgartiruvchi so'rovlarda Origin tekshiruvi bilan himoyalangan. Bu mahalliy panel internetga chiqarish uchun tayyor degani emas: public deployment uchun HTTPS, ishonchli reverse proxy, server darajasidagi kirish cheklovi va xavfsizlik ko'rigi zarur.
 
 ## Brauzerda saqlanadigan narsalar
 
