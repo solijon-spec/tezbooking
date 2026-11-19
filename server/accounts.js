@@ -21,6 +21,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { clientIp, secureAttr } = require('./net');
 
 const COOKIE = 'tb_agency';
 const SESSION_MS = 30 * 86400000;        // 30 kun
@@ -202,7 +203,7 @@ function createAccounts({ db, sendJson, readBody, paymentMode }) {
     if (!a || a.status !== 'active') { sessions.delete(tok); return null; }
     return a;
   }
-  const cookie = (tok, maxAge) => `${COOKIE}=${tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+  const cookie = (tok, maxAge) => `${COOKIE}=${tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureAttr()}`;
   function tooMany(ip) {
     const now = Date.now();
     const list = (tries.get(ip) || []).filter(ts => now - ts < 60000);
@@ -229,7 +230,7 @@ function createAccounts({ db, sendJson, readBody, paymentMode }) {
 
     if (route === '/login') {
       if (req.method !== 'POST') return sendJson(res, 405, { error: 'method' });
-      const ip = req.socket.remoteAddress || '';
+      const ip = clientIp(req);
       if (tooMany(ip)) return sendJson(res, 429, { error: 'rate_limited' });
       const body = await jsonBody(req);
       const a = body && q.byLogin.get(cleanLogin(body.login));

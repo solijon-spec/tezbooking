@@ -1,0 +1,28 @@
+[Unit]
+Description=TezBooking
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tezbooking
+Group=tezbooking
+WorkingDirectory=/opt/tezbooking
+EnvironmentFile=/etc/tezbooking.env
+ExecStart=/usr/bin/node server/server.js
+Restart=always
+RestartSec=3
+
+# Xavfsizlik: kod faqat o'qiladi, yozish faqat ma'lumotlar papkasiga
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/lib/tezbooking
+
+[Install]
+WantedBy=multi-user.target

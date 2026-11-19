@@ -24,6 +24,13 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 loadEnv(path.join(ROOT, '.env'));
+const { clientIp } = require('./net');       // .env o'qilgandan keyin (TRUST_PROXY, COOKIE_SECURE)
+
+// Haqiqiy serverda (NODE_ENV=production) demo to'lov rejimi taqiqlanadi: aks holda hamma pulsiz tarif olib qoladi
+if (process.env.NODE_ENV === 'production' && (process.env.PAYMENT_MODE || 'manual').trim() === 'demo') {
+  console.error("XATO: NODE_ENV=production da PAYMENT_MODE=demo mumkin emas (to'lov pulsiz tasdiqlanardi). .env da PAYMENT_MODE=manual qiling.");
+  process.exit(1);
+}
 const DB_FILE = path.resolve(ROOT, process.env.DB_FILE || 'data/tezbooking.db');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -234,7 +241,7 @@ async function streamAnswer(req, res, signal) {
 async function handleChat(req, res) {
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'method' });
   if (!API_KEY) return sendJson(res, 503, { error: 'no_key' });
-  if (rateLimited(req.socket.remoteAddress || '')) return sendJson(res, 429, { error: 'rate_limited' });
+  if (rateLimited(clientIp(req))) return sendJson(res, 429, { error: 'rate_limited' });
   let request;
   try { request = cleanRequest(JSON.parse(await readBody(req))); }
   catch (e) { return sendJson(res, e.status || 400, { error: 'bad_request' }); }

@@ -1,0 +1,4 @@
+# Linux serverda ishlaydigan skriptlar har doim LF bilan (Windows'da CRLF bo'lib qolsa, bash xato beradi)
+*.sh text eol=lf
+*.service text eol=lf
+Caddyfile.* text eol=lf

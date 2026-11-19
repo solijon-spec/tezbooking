@@ -30,6 +30,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { clientIp, secureAttr } = require('./net');
 
 const COOKIE = 'tb_admin';
 const SESSION_MS = 12 * 3600 * 1000;
@@ -61,7 +62,7 @@ function createAdminApi({ db, sendJson, readBody, notify, password, accounts }) 
     tries.set(ip, list);
     return list.length >= LOGIN_TRIES_PER_MIN;
   }
-  const cookie = (tok, maxAge) => `${COOKIE}=${tok}; Path=/api/admin; HttpOnly; SameSite=Strict; Max-Age=${maxAge}`;
+  const cookie = (tok, maxAge) => `${COOKIE}=${tok}; Path=/api/admin; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secureAttr()}`;
 
   async function jsonBody(req) {
     // CSRF'dan himoya: faqat JSON so'rovlar (oddiy forma bilan yuborib bo'lmaydi)
@@ -77,7 +78,7 @@ function createAdminApi({ db, sendJson, readBody, notify, password, accounts }) 
 
     if (route === '/login') {
       if (req.method !== 'POST') return sendJson(res, 405, { error: 'method' });
-      const ip = req.socket.remoteAddress || '';
+      const ip = clientIp(req);
       if (tooMany(ip)) return sendJson(res, 429, { error: 'rate_limited' });
       const body = await jsonBody(req);
       const ok = body && typeof body.password === 'string' && crypto.timingSafeEqual(hash(body.password), passHash);
