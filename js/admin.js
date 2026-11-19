@@ -63,8 +63,8 @@
     }
   }
 
-  const logo = '<img class="logo-mark" src="images/logo-mark-128.png" width="36" height="36" alt="">';
-  const brand = `<div class="ad-brand">${logo}<span>Tezbooking <em>admin</em></span></div>`;
+  const logo = '<img class="logo-brand" src="images/logo-horizontal.png" width="136" height="34" alt="TezBooking">';
+  const brand = `<div class="ad-brand">${logo}<em>admin</em></div>`;
 
   // ---------- Kirish va xabar ekranlari ----------
   function screen(title, text, form) {

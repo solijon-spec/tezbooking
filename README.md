@@ -81,7 +81,7 @@ Hech narsa o'rnatish shart emas.
 | `js/demo-api.js`, `js/demo-seed.js` | Demo rejim: brauzerdagi soxta server va namunaviy ma'lumotlar |
 | `server/demo.js` | Lokal demo: `npm run demo` (alohida baza, 3100/3101 portlar) |
 | `admin.html`, `js/admin.js`, `css/admin.css` | Admin panel sahifasi (`/admin`) |
-| `images/` | Sayt rasmlari (JPG, 960px): `country-<id>.jpg` — davlatlar, `hotel-resort-1..4` / `hotel-city-1..2` — mehmonxonalar (umumiy, AI bilan yaratilgan), `flight-plane.jpg` — aviachiptalar banneri. Logo: `logo.jpg` (asl, to'liq), `logo-mark.png` (belgi, 512px), `logo-mark-128.png` (sayt sarlavhasi), `favicon-32.png`, `apple-touch-icon.png` |
+| `images/` | Sayt rasmlari (JPG, 960px): `country-<id>.jpg` — davlatlar, `hotel-resort-1..4` / `hotel-city-1..2` — mehmonxonalar (umumiy, AI bilan yaratilgan), `flight-plane.jpg` — aviachiptalar banneri. Logo: `logo.png` (asl, to'liq), `logo-horizontal.png` (sayt va admin sarlavhasi), `logo-mark.png` (belgi, 512px), `favicon-32.png`, `apple-touch-icon.png` |
 | `package.json` | `npm start` buyrug'i (qo'shimcha paket yo'q) |
 | `.env.example` | Sozlamalar namunasi — undan `.env` faylini yasaysiz |
 

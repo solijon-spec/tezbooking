@@ -351,11 +351,11 @@
     const css = document.createElement('style');
     css.textContent = `
       .demo-ribbon{position:fixed;left:16px;bottom:calc(var(--dock-h,0px) + 16px);z-index:45;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-        max-width:calc(100vw - 120px);padding:6px 8px 6px 12px;border-radius:999px;background:rgba(23,17,65,.92);color:#fff;font:600 12.5px/1.3 Inter,system-ui,sans-serif;
+        max-width:calc(100vw - 120px);padding:6px 8px 6px 12px;border-radius:999px;background:rgba(10,35,80,.92);color:#fff;font:600 12.5px/1.3 Inter,system-ui,sans-serif;
         box-shadow:0 8px 24px rgba(0,0,0,.25);backdrop-filter:blur(8px)}
-      .demo-ribbon b{background:linear-gradient(135deg,#2EE2EE,#4F7CF7);color:#171141;padding:2px 8px;border-radius:999px;font-size:11px;letter-spacing:.06em}
+      .demo-ribbon b{background:linear-gradient(135deg,#FF9600,#0079E6);color:#0B2350;padding:2px 8px;border-radius:999px;font-size:11px;letter-spacing:.06em}
       .demo-ribbon code{background:rgba(255,255,255,.14);padding:1px 6px;border-radius:6px;font-size:12px;user-select:all}
-      .demo-ribbon a{color:#9AF6FA;text-decoration:none}
+      .demo-ribbon a{color:#FFC266;text-decoration:none}
       .demo-ribbon button{border:0;border-radius:999px;background:rgba(255,255,255,.12);color:#fff;font:inherit;padding:4px 10px;cursor:pointer;min-height:28px}
       .demo-ribbon [data-demo-hide]{width:28px;padding:0;font-size:16px}
       @media (max-width:760px){.demo-ribbon{left:8px;bottom:calc(var(--dock-h,0px) + 84px);max-width:calc(100vw - 16px);border-radius:16px}}`;

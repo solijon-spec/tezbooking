@@ -235,8 +235,8 @@
   // ---------- Ikonkalar ----------
   const svg = (size, body, sw) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw || 2}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
   const I = {
-    // Logo belgisi (images/logo-mark.png — asl logo: images/logo.jpg)
-    logo: '<img class="logo-mark" src="images/logo-mark-128.png" width="38" height="38" alt="">',
+    // Logo (images/logo-horizontal.png — asl logo: images/logo.png)
+    logo: '<img class="logo-brand" src="images/logo-horizontal.png" width="160" height="40" alt="TezBooking">',
     check: svg(12, '<path d="M5 12.5 10 17l9-10"></path>', 3.5),
     search: svg(18, '<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>', 2.4),
     plus: svg(18, '<path d="M12 5v14M5 12h14"></path>', 2.4),
@@ -613,7 +613,7 @@
     return `
 <header class="topbar${state.menuOpen ? ' menu-open' : ''}" id="top">
   <div class="container topbar-inner">
-    <a href="#top" class="logo">${I.logo}<span class="logo-text">Tezbooking</span></a>
+    <a href="#top" class="logo" aria-label="TezBooking">${I.logo}</a>
     <button type="button" class="menu-btn" data-action="menu" aria-expanded="${state.menuOpen}" aria-controls="top-menu" aria-label="${esc(t('menu_btn'))}">${I.menu}</button>
     <div class="top-menu" id="top-menu">
       <nav class="nav" aria-label="${esc(t('aria_menu'))}">
