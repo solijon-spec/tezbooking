@@ -304,7 +304,7 @@ const runBookings = (req, res, pathname, url) => bookingsApi.handle(req, res, pa
 });
 
 // ---------- Admin panel serveri (faqat admin sahifasi, uning fayllari va admin API) ----------
-const ADMIN_FILES = /^\/(css\/(styles|admin)\.css|js\/admin\.js|images\/[\w.-]+\.(png|jpg|svg))$/;
+const ADMIN_FILES = /^\/(css\/(styles|admin)\.css|js\/(admin|data|demo-seed|demo-api)\.js|images\/[\w.-]+\.(png|jpg|svg))$/;
 const adminServer = ADMIN_SEPARATE && http.createServer((req, res) => {
   let url;
   try { url = new URL(req.url, 'http://localhost'); } catch (e) { return sendJson(res, 400, { error: 'bad_path' }); }

@@ -4,7 +4,8 @@
   "private": true,
   "description": "TezBooking — turagentliklar uchun tur qidiruv sayti (prototip) va AI yordamchi",
   "scripts": {
-    "start": "node server/server.js"
+    "start": "node server/server.js",
+    "demo": "node server/demo.js"
   },
   "engines": {
     "node": ">=22.13"

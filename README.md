@@ -17,6 +17,26 @@ Demo'da «sotilib ketish» kun davomida tasodifiy simulyatsiya qilinadi (`js/dat
 
 Uchala bo'limdan ham variantni **mijozga taklif**ga qo'shish mumkin — bitta taklifda tur, mehmonxona va aviachipta aralash bo'lishi mumkin.
 
+## Demo versiya
+
+**Internetda (o'rnatishsiz):** https://solijon-spec.github.io/tezbooking/
+- Server kerak emas: sayt va admin panel API'si brauzer ichida taqlid qilinadi (`js/demo-api.js`).
+- Har bir tashrif buyuruvchining o'z demo nusxasi bor (brauzerda saqlanadi), "Qayta boshlash" tugmasi boshlang'ich holatga qaytaradi.
+- Demo faqat `*.github.io` da yoki manzilga `?demo` qo'shilganda yoqiladi (`?demo=0` — o'chiradi). Oddiy ishda (`npm start`) hech narsa qilmaydi.
+
+**Lokal (shu kompyuterda):** `npm run demo` → sayt http://localhost:3100, admin http://localhost:3101
+- Alohida baza `data/demo.db` — haqiqiy baza va `.env` parollariga tegilmaydi. Qayta to'ldirish: `npm run demo -- --reset`.
+
+| Demo kirish | Login | Parol |
+|---|---|---|
+| Tur firma (tarif faol) | `demo` | `demo12345` |
+| Tur firma (tarifsiz — sotib olishni sinash) | `yangi` | `demo12345` |
+| Admin panel | — | `admin12345` |
+
+Namunaviy ma'lumotlar (`js/demo-seed.js`): 7 tur firma (faol, muddati tugayotgan, tugagan, to'lov kutayotgan, bloklangan),
+8 to'lov va 12 bron — sanalar bugungi kunga nisbatan, bronlar saytdagi haqiqiy takliflardan olinadi.
+To'lov demo rejimida: "Sotib olish" pulsiz darhol faollashtiradi.
+
 ## Qanday ochiladi
 
 Hech narsa o'rnatish shart emas.
@@ -43,6 +63,8 @@ Hech narsa o'rnatish shart emas.
 | `server/admin.js` | Admin panel API'si: parol bilan kirish, bronlar, firmalar, to'lovlar, tariflar |
 | `server/accounts.js` | Tur firmalar (login/parol), tariflar, to'lovlar |
 | `js/account.js` | Saytda: tur firma kirishi, tariflar oynasi, to'lov |
+| `js/demo-api.js`, `js/demo-seed.js` | Demo rejim: brauzerdagi soxta server va namunaviy ma'lumotlar |
+| `server/demo.js` | Lokal demo: `npm run demo` (alohida baza, 3100/3101 portlar) |
 | `admin.html`, `js/admin.js`, `css/admin.css` | Admin panel sahifasi (`/admin`) |
 | `images/` | Sayt rasmlari (JPG, 960px): `country-<id>.jpg` — davlatlar, `hotel-resort-1..4` / `hotel-city-1..2` — mehmonxonalar (umumiy, AI bilan yaratilgan), `flight-plane.jpg` — aviachiptalar banneri. Logo: `logo.jpg` (asl, to'liq), `logo-mark.png` (belgi, 512px), `logo-mark-128.png` (sayt sarlavhasi), `favicon-32.png`, `apple-touch-icon.png` |
 | `package.json` | `npm start` buyrug'i (qo'shimcha paket yo'q) |
