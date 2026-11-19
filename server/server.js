@@ -286,6 +286,7 @@ catch (e) { console.error('Bazani ochib bo\'lmadi: ' + e.message); process.exit(
 const accounts = require('./accounts').createAccounts({ db, sendJson, readBody, paymentMode: (process.env.PAYMENT_MODE || 'manual').trim() });
 const bookingsApi = require('./bookings').createBookingsApi({ db, sendJson, readBody, accounts });
 accounts.setNotify(bookingsApi.notify);
+const live = require('./live').createLive({ sendJson });     // operatorlardan haqiqiy narxlar
 const adminApi = require('./admin').createAdminApi({ db, sendJson, readBody, notify: bookingsApi.notify, password: process.env.ADMIN_PASSWORD || '', accounts });
 
 // Admin panel alohida portda (asosiy: 3001). ADMIN_PORT=0 qilinsa — eski usulda sayt ichida: /admin
@@ -327,7 +328,7 @@ const server = http.createServer((req, res) => {
   const pathname = url.pathname;
   if (pathname === '/api/health') {
     return sendJson(res, 200, {
-      service: 'tezbooking-ai', ok: true, hasKey: !!API_KEY, model: CHAT_MODEL, guard: GUARD_ON ? GUARD_MODEL : null, bookings: true
+      service: 'tezbooking-ai', ok: true, hasKey: !!API_KEY, model: CHAT_MODEL, guard: GUARD_ON ? GUARD_MODEL : null, bookings: true, live: true
     });
   }
   if (pathname === '/api/chat') { handleChat(req, res); return; }
@@ -336,6 +337,13 @@ const server = http.createServer((req, res) => {
     if (ADMIN_SEPARATE) return sendJson(res, 404, { error: 'not_found' });
     if (pathname.startsWith('/api/admin/')) return runAdmin(req, res, pathname, url);
     if (pathname !== '/js/admin.js') { req.url = '/admin.html'; return serveStatic(req, res); }
+  }
+  if (pathname.startsWith('/api/live/')) {
+    live.handle(req, res, pathname, url).catch(e => {
+      console.error('[live] xato:', e.message);
+      sendJson(res, 500, { error: 'server' });
+    });
+    return;
   }
   if (pathname === '/api/tariffs' || pathname.startsWith('/api/agency/')) {
     accounts.handle(req, res, pathname).catch(e => {

@@ -459,3 +459,61 @@ html.wp-lock { overflow: hidden; }
   .acc-modal { border-radius: 22px 22px 0 0; padding: 22px 16px calc(18px + env(safe-area-inset-bottom)); }
   .acc-top-in { max-width: 100%; }
 }
+
+/* ---------- Haqiqiy narxlar (operatorlardan) ---------- */
+.live-note { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; font-size: 13px;
+  background: #E9FCFD; border: 1px solid #B7F0F4; color: #0B4A55; }
+.live-note.loading { background: #F1F2FB; border-color: var(--line); color: var(--muted); }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: #10B981; flex: 0 0 auto; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2); }
+.live-note.loading .live-dot { background: var(--accent-2); animation: tb-pulse 1.1s ease-in-out infinite; }
+.live-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #E6F8F1; color: #0B5D3B; }
+.live-badge .live-dot { width: 6px; height: 6px; box-shadow: none; }
+.live-tour { margin-top: -2px; }
+.day.cheapest { background: #E9FCFD; border-color: var(--accent); }
+.day.cheapest .tag { color: #0B6F7A; }
+
+/* ---------- Operatorlar filtri ---------- */
+.ops-tools { display: flex; gap: 4px; margin: -4px 0 4px -6px; }
+.ops-tools .btn-link { min-height: 32px; font-size: 13px; }
+.op-row { display: flex; align-items: flex-start; gap: 4px; }
+.op-row .op-check { flex: 1 1 auto; min-width: 0; }
+.op-site { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; color: var(--muted); flex: 0 0 auto; }
+.op-site:hover { background: var(--bg); color: var(--link); }
+.op-site.sm { width: 22px; height: 22px; vertical-align: middle; }
+.op-demo { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 5px; border-radius: 5px; background: #F1F2FB; color: var(--muted); vertical-align: 1px; }
+.ops-more { align-self: flex-start; min-height: 36px; padding: 0; }
+
+/* ---------- Minimal animatsiyalar ---------- */
+@keyframes tb-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes tb-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tb-pulse { 50% { transform: scale(0.6); opacity: 0.5; } }
+@keyframes tb-shine { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  /* Sahifa ochilganda: qidiruv kartasi va natijalar yumshoq paydo bo'ladi.
+     render() DOM'ni almashtirmaydi (morph), shuning uchun animatsiya faqat YANGI paydo bo'lgan elementlarda ishlaydi */
+  .search, .hot, .day, .hotel, .empty, .live-note, .gate, .offer-card { animation: tb-up 0.42s cubic-bezier(.2, .8, .2, 1) backwards; }
+  .hot:nth-child(2), .hotel:nth-of-type(2) { animation-delay: 0.04s; }
+  .hot:nth-child(3), .hotel:nth-of-type(3) { animation-delay: 0.08s; }
+  .hot:nth-child(4), .hotel:nth-of-type(4) { animation-delay: 0.12s; }
+  .hot:nth-child(5), .hotel:nth-of-type(5) { animation-delay: 0.16s; }
+  .hot:nth-child(n+6), .hotel:nth-of-type(n+6) { animation-delay: 0.2s; }
+  .search-hero { animation: tb-fade 0.6s ease backwards; }
+  .offers { animation: tb-fade 0.25s ease backwards; }
+
+  /* Sichqoncha bilan: kartalar biroz ko'tariladi, rasmlar sekin kattalashadi */
+  .hotel, .hot, .day, .chip, .tile img, .hot-img, .btn, .acc-card, .ad-tile { transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease, filter 0.2s ease; }
+  .hotel:hover { box-shadow: 0 10px 28px rgba(23, 17, 65, 0.09); transform: translateY(-2px); }
+  .hot:hover, .day:not(:disabled):hover, .acc-card:hover, .ad-tile-link:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(23, 17, 65, 0.1); }
+  .hot { position: relative; }
+  .hot:hover .hot-img, .hotel:hover .tile img { transform: scale(1.05); }
+  .tile { isolation: isolate; }
+  .chip:hover { border-color: var(--accent-2); }
+  .btn:active, .chip:active, .day:active { transform: scale(0.97); }
+  .btn-accent { background-size: 200% 100%; }
+  .btn-accent:hover { animation: tb-shine 1.6s linear; }
+
+  /* Qidirilayotganda: yuklanish chizig'i */
+  .live-note.loading { position: relative; overflow: hidden; }
+  .live-note.loading::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent); background-size: 200% 100%; animation: tb-shine 1.4s linear infinite; }
+}

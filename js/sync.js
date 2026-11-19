@@ -15,9 +15,9 @@
 
   let base = null;
 
-  async function request(path, opts) {
+  async function request(path, opts, timeoutMs) {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs || 8000);
     try {
       const resp = await fetch(base + path, Object.assign({ cache: 'no-store', credentials: 'same-origin', signal: ctrl.signal }, opts || {}));
       const data = await resp.json().catch(() => ({}));

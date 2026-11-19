@@ -17,6 +17,21 @@ Demo'da «sotilib ketish» kun davomida tasodifiy simulyatsiya qilinadi (`js/dat
 
 Uchala bo'limdan ham variantni **mijozga taklif**ga qo'shish mumkin — bitta taklifda tur, mehmonxona va aviachipta aralash bo'lishi mumkin.
 
+## Haqiqiy narxlar (tur operatorlardan)
+
+"Turlar" bo'limida server (`npm start`) ishlayotganda narxlar **o'ylab topilmaydi** — ular tur operatorlarning
+o'z qidiruvidan olinadi (`server/live/`). Ko'p operatorlar SAMO-Tour tizimida ishlaydi va "Поиск тура" sahifasi
+login'siz ochiq: server o'sha sahifa brauzerga beradigan so'rovni yuboradi, javobdagi narxlarni o'qiydi va saytga beradi.
+
+- Toshkent (Samarqand, Dushanbe) dan jo'nash, tanlangan kun ±3 kun, aniq tunlar soni; narx USD, 2 kishi uchun jami.
+- Natija 10 daqiqa keshda turadi (operator saytlariga ortiqcha yuk tushmasin). Bir xil mehmonxona turli operatorlarda bo'lsa — bitta kartada.
+- Hozir ochiq qidiruvdan narx beradigan operatorlar: Prestige, Kazunion, Selfie Travel, Savtour, FUN&SUN, FlyKhiva, Malva, Easybooking, Kompas (yo'nalishga qarab).
+- Ochiq qidiruvi yo'q yoki yopiq: ANEX, Crystal Bay (Toshkentdan emas), Centrum, Aqua, Vietratour (Toshkentdan emas), Pegas, Asialuxe, RezLive va boshqalar —
+  ular operator bergan **API kaliti** bilan ulanadi. Filtrda "demo" belgisi bilan ko'rsatilgan.
+- Bron hozircha "so'rov" sifatida TezBooking'da qayd etiladi; operatorga avtomatik yuborish API kaliti bilan ishlaydi.
+- "Mehmonxonalar" va "Aviachiptalar" bo'limlari hali demo narxlarda (manbalar API kaliti bilan ulanadi).
+- Internetdagi demo (GitHub Pages) serversiz ishlagani uchun u yerda demo narxlar ko'rsatiladi.
+
 ## Demo versiya
 
 **Internetda (o'rnatishsiz):** https://solijon-spec.github.io/tezbooking/

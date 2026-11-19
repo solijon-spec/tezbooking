@@ -1,7 +1,7 @@
 /*
  * TezBooking — demo ma'lumotlar va narx hisoblash.
  *
- * DIQQAT: operatorlar, mehmonxonalar va narxlar o'ylab topilgan (demo).
+ * DIQQAT: operatorlar haqiqiy (OPS), lekin mehmonxonalar va narxlar hozircha o'ylab topilgan (demo).
  * Haqiqiy versiyada offersFor() o'rniga turoperatorlarning API'si (masalan, SAMO XML-shlyuzi) ishlatiladi.
  * Interfeys (app.js) har bir taklifni quyidagi ko'rinishda kutadi:
  *   { key, op: {id, name, color}, meal: 'BB'|'HB'|'AI'|'UAI', room: 'std'|'sup'|'dlx', price,
@@ -11,14 +11,34 @@
 (function (global) {
   'use strict';
 
-  // ---------- Turoperatorlar (demo) ----------
+  // ---------- Turoperatorlar ----------
+  // Haqiqiy operatorlar va ularning agentlik kabinetlari (B2B). Narxlar hozircha DEMO:
+  // operator TezBooking'ga API kalitini bergach, shu operator uchun offersFor() o'rniga uning API'si ulanadi.
+  //   sys:       samo — SAMO-Tour Online (bitta ulagich hammasiga), pegas — Pegas Touristik, api — XML/API (RezLive), own — o'z tizimi
+  //   countries: faqat shu yo'nalishlar (yo'q bo'lsa — barchasi), hotelOnly: faqat mehmonxona (Mehmonxonalar bo'limi)
+  //   live:      true — API ulangan (haqiqiy narxlar). Hozircha hammasi false.
   const OPS = [
-    { id: 'silk', name: 'Silk Way Tour', color: '#2563EB', f: 1.0 },
-    { id: 'orient', name: 'Orient Travel', color: '#C2410C', f: 1.03 },
-    { id: 'sky', name: 'SkyBridge Tours', color: '#0F766E', f: 0.985 },
-    { id: 'navruz', name: "Navro'z Travel", color: '#7C3AED', f: 1.05 },
-    { id: 'kamalak', name: 'Kamalak Tour', color: '#BE185D', f: 1.015 }
-  ];
+    { id: 'anex', name: 'ANEX Tour', site: 'https://b2b.anextour.uz/', sys: 'samo', color: '#E30613', f: 1.0 },
+    { id: 'kompas', name: 'Kompas Tour', site: 'https://online.uz.kompastour.com/search_tour', sys: 'samo', color: '#0057B8', f: 1.01 },
+    { id: 'fstravel', name: 'FUN&SUN', site: 'https://b2b.fstravel.asia/', sys: 'samo', color: '#F28C00', f: 1.02 },
+    { id: 'pegas', name: 'Pegas Touristik', site: 'https://uz.pegast.asia/PackageSearch', sys: 'pegas', color: '#D2232A', f: 0.995 },
+    { id: 'crystalbay', name: 'Crystal Bay', site: 'https://booking.crystalbay.com/search_tour', sys: 'samo', color: '#00A3C4', f: 1.03 },
+    { id: 'kazunion', name: 'Kazunion', site: 'https://online.kazunion.com/', sys: 'samo', color: '#1B4F9C', f: 0.99 },
+    { id: 'kazunionae', name: 'Kazunion UAE', site: 'https://uae.kazunion.com', sys: 'own', countries: ['ae'], color: '#2A6FCB', f: 0.98 },
+    { id: 'centrum', name: 'Centrum Holidays', site: 'https://online.centrum-holidays.com/search_tour', sys: 'samo', color: '#6D28D9', f: 1.015 },
+    { id: 'prestige', name: 'Prestige', site: 'http://online.uz-prestige.com/', sys: 'samo', color: '#B8860B', f: 1.04 },
+    { id: 'asialuxe', name: 'Asialuxe Travel', site: 'https://b2b.asialuxe.uz/login', sys: 'own', color: '#0F766E', f: 1.025 },
+    { id: 'aqua', name: 'Aqua Travel Group', site: 'https://agency.aqua-travelgroup.com/tour-package', sys: 'samo', color: '#0EA5E9', f: 1.0 },
+    { id: 'flykhiva', name: 'FlyKhiva', site: 'https://b2b.flykhiva.travel/search_tour', sys: 'samo', color: '#C2410C', f: 0.985 },
+    { id: 'easybooking', name: 'Easybooking', site: 'https://tours.easybooking.uz/search_tour', sys: 'samo', color: '#16A34A', f: 1.01 },
+    { id: 'malva', name: 'Malva Tour', site: 'https://malvatouroperator.uz/search_tour', sys: 'samo', color: '#BE185D', f: 1.02 },
+    { id: 'vietratour', name: 'Vietratour', site: 'https://b2b.vietratour.com/', sys: 'samo', countries: ['vn'], color: '#DA251D', f: 0.97 },
+    { id: 'selfie', name: 'Selfie Travel', site: 'http://b2b.selfietravel.kz/search_tour', sys: 'samo', color: '#DB2777', f: 1.005 },
+    { id: 'savtour', name: 'Savtour', site: 'https://online.savtour.az/search_tour', sys: 'samo', countries: ['az', 'ge', 'tr'], color: '#0369A1', f: 0.99 },
+    { id: 'vek', name: 'Velikolepniy Vek', site: 'https://velikolepniy-vek.com/login', sys: 'own', countries: ['tr'], color: '#7F1D1D', f: 1.03 },
+    { id: 'mirjahon', name: 'Mir-Jahon', site: 'https://online.mir-jahon.uz', sys: 'own', color: '#4D7C0F', f: 1.035 },
+    { id: 'rezlive', name: 'RezLive', site: 'https://www.rezlive.com', sys: 'api', hotelOnly: true, color: '#1D4ED8', f: 0.96 }
+  ].map(o => Object.assign({ live: false }, o));
 
   // ---------- Davlatlar ----------
   // flight — bir kishilik aviareys (USD), k — mehmonxona narxi koeffitsienti
@@ -130,7 +150,8 @@
   };
   const HUBS = ['IST', 'DXB', 'GYD', 'KUL', 'DOH'];
 
-  const MEALS = { BB: { f: 1 }, HB: { f: 1.15 }, AI: { f: 1.32 }, UAI: { f: 1.45 } };
+  // RO va FB — faqat operatorlarning haqiqiy takliflarida uchraydi
+  const MEALS = { RO: { f: 0.9 }, BB: { f: 1 }, HB: { f: 1.15 }, FB: { f: 1.25 }, AI: { f: 1.32 }, UAI: { f: 1.45 } };
   const ROOMS = [{ id: 'std', f: 1 }, { id: 'sup', f: 1.07 }, { id: 'dlx', f: 1.15 }];
 
   const byId = {};
@@ -196,8 +217,10 @@
     const mealOpts = h.stars === 5 ? ['AI', 'UAI'] : h.stars === 4 ? ['HB', 'AI'] : ['BB', 'HB'];
     const dow = date.parse(dateIso).getUTCDay();
     const dateF = (dow === 5 || dow === 6 ? 1.06 : 1) * (0.95 + 0.1 * rnd(dateIso + c.id));
-    let ops = OPS.filter(o => rnd(h.id + o.id) < 0.7);
-    if (ops.length < 2) ops = OPS.slice().sort((a, b) => rnd(h.id + a.id + 's') - rnd(h.id + b.id + 's')).slice(0, 2);
+    // Shu yo'nalishda ishlaydigan operatorlar; har bir mehmonxonani ulardan ~4–6 tasi sotadi
+    const serve = OPS.filter(o => (!o.countries || o.countries.indexOf(h.country) >= 0) && (q.noFlight || !o.hotelOnly));
+    let ops = serve.filter(o => rnd(h.id + o.id) < (o.countries ? 0.8 : 0.27));
+    if (ops.length < 3) ops = serve.slice().sort((a, b) => rnd(h.id + a.id + 's') - rnd(h.id + b.id + 's')).slice(0, 3);
     const pax = q.adults + ages.reduce((s, a) => s + childHotelF(a), 0);
     const fpax = q.adults + ages.reduce((s, a) => s + childFlightF(a), 0);
     const roomsF = 1 + 0.12 * (rooms - 1);
@@ -301,6 +324,59 @@
     return out;
   }
 
-  global.TB = { OPS, COUNTRIES, REGIONS, HOTELS, HOTEL_BY_ID, FROM, MEALS, ROOMS, AIRLINES, AIRPORTS, byId, UZS_RATE, date, offersFor, hotFor, flightsFor,
-    isGone, setBooked, setClock: (fn) => { now = fn; } };
+  // ---------- Jonli (haqiqiy) takliflar: operatorlardan server orqali (server/live) ----------
+  // Har bir qidiruv (davlat + sana + tunlar + mehmonlar + jo'nash) uchun alohida to'plam.
+  // Bir xil mehmonxona turli operatorlarda bo'lsa — bitta kartaga birlashadi (nomi + shahar bo'yicha).
+  const OP_BY_ID = {};
+  OPS.forEach(o => { OP_BY_ID[o.id] = o; });
+  const live = {};                 // sig -> { at, country, hotelIds: [], offers: { hotelId: [offer] }, ops: [...] }
+  const LIVE_KEY = 'tezbooking.liveHotels';
+  const liveSig = (country, q, dateIso) => [country, dateIso, q.nights, q.adults, (q.childAges || []).join('.'), q.from].join('|');
+  const slug = (s) => String(s).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/g, '');
+  function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
+  // Avval ko'rilgan haqiqiy mehmonxonalar (mijozga taklifda qolganlari sahifa yangilanganda ham ochilsin)
+  try { (JSON.parse(localStorage.getItem(LIVE_KEY) || '[]') || []).forEach(h => { if (h && h.id) HOTEL_BY_ID[h.id] = h; }); } catch (e) { /* yo'q */ }
+  function saveLiveHotels() {
+    try {
+      const list = Object.keys(HOTEL_BY_ID).filter(id => HOTEL_BY_ID[id].live).slice(-400).map(id => HOTEL_BY_ID[id]);
+      localStorage.setItem(LIVE_KEY, JSON.stringify(list));
+    } catch (e) { /* to'lgan */ }
+  }
+  function setLive(country, q, dateIso, data) {
+    const sig = liveSig(country, q, dateIso);
+    const entry = { at: Date.now(), country, hotelIds: [], offers: {}, ops: data.operators || [] };
+    (data.offers || []).forEach(r => {
+      if (!OP_BY_ID[r.opId] || !r.hotel || !(r.price > 0)) return;
+      const hid = 'L' + hash(country + '|' + slug(r.hotel) + '|' + slug(r.city));
+      if (!HOTEL_BY_ID[hid]) HOTEL_BY_ID[hid] = { id: hid, name: r.hotel, country, city: r.city || '', stars: r.stars || 0, rating: 0, live: true };
+      else if (r.stars && !HOTEL_BY_ID[hid].stars) HOTEL_BY_ID[hid].stars = r.stars;
+      const list = entry.offers[hid] || (entry.offers[hid] = []);
+      if (!list.length) entry.hotelIds.push(hid);
+      // Kalit formati demo bilan bir xil: mehmonxona|operator|sana|tunlar|kattalar|bolalar|xonalar|jo'nash
+      const key = [hid, r.opId + '.' + (r.roomKey || hash(r.room)) + '.' + (r.mealKey || r.meal), dateIso, q.nights, q.adults, (q.childAges || []).join('.'), 1, q.from].join('|');
+      const prev = list.find(o => o.key === key);
+      if (prev && prev.price <= r.price) return;
+      const offer = { key, op: OP_BY_ID[r.opId], meal: r.meal, mealRaw: r.mealRaw, room: r.room || 'std', price: r.price,
+        avail: r.avail === 'ok' || r.avail === 'few' ? r.avail : 'req', seats: r.seats === 'none' ? 'few' : r.seats, instant: r.avail === 'ok', tour: r.tour, live: true };
+      if (prev) list[list.indexOf(prev)] = offer; else list.push(offer);
+    });
+    live[sig] = entry;
+    goneVer++;
+    saveLiveHotels();
+    return entry;
+  }
+  const liveEntry = (country, q, dateIso) => live[liveSig(country, q, dateIso)] || null;
+  function liveOffersFor(h, q, dateIso) {
+    const e = live[liveSig(h.country, q, dateIso)];
+    return e && e.offers[h.id] ? e.offers[h.id].filter(o => !isGone(o.key)) : [];
+  }
+  const liveHotels = (countries, q, dateIso) => [].concat(...countries.map(c => {
+    const e = liveEntry(c, q, dateIso);
+    return e ? e.hotelIds.map(id => HOTEL_BY_ID[id]) : [];
+  }));
+
+  global.TB = { OPS, COUNTRIES, REGIONS, HOTELS, HOTEL_BY_ID, FROM, MEALS, ROOMS, AIRLINES, AIRPORTS, byId, UZS_RATE, date,
+    offersFor: (h, q, dateIso) => (h.live ? liveOffersFor(h, q, dateIso) : offersFor(h, q, dateIso)),
+    hotFor, flightsFor, isGone, setBooked, setClock: (fn) => { now = fn; },
+    live: { set: setLive, entry: liveEntry, hotels: liveHotels, sig: liveSig } };
 })(window);
