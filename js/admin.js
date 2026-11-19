@@ -63,7 +63,7 @@
     }
   }
 
-  const logo = '<img class="logo-brand" src="images/logo-horizontal.png" width="136" height="34" alt="TezBooking">';
+  const logo = '<img class="logo-brand" src="images/logo-horizontal.png?v=20261119b" width="136" height="34" alt="TezBooking">';
   const brand = `<div class="ad-brand">${logo}<em>admin</em></div>`;
 
   // ---------- Kirish va xabar ekranlari ----------

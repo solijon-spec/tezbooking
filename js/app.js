@@ -235,8 +235,8 @@
   // ---------- Ikonkalar ----------
   const svg = (size, body, sw) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw || 2}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
   const I = {
-    // Logo (images/logo-horizontal.png — asl logo: images/logo.png)
-    logo: '<img class="logo-brand" src="images/logo-horizontal.png" width="160" height="40" alt="TezBooking">',
+    // Logo (images/logo-horizontal.png?v=20261119b — asl logo: images/logo.png)
+    logo: '<img class="logo-brand" src="images/logo-horizontal.png?v=20261119b" width="160" height="40" alt="TezBooking">',
     check: svg(12, '<path d="M5 12.5 10 17l9-10"></path>', 3.5),
     search: svg(18, '<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>', 2.4),
     plus: svg(18, '<path d="M12 5v14M5 12h14"></path>', 2.4),
