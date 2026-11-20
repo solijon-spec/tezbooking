@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -69,12 +69,12 @@ async function callApi(api, { method = 'GET', route, body, cookie, origin = 'htt
 test('Owner API denies unauthenticated access and rejects cross-origin mutations', async t => {
   const { service } = fixture(t);
   const auth = createOwnerAuth({
-    email: 'solisulhiddinov@gmail.com',
+    email: 'owner@example.com',
     passwordHash: hashPassword('a-secure-owner-password'),
     secure: () => ''
   });
   assert.equal(auth.login('not-the-owner@example.com', 'a-secure-owner-password'), null);
-  assert.equal(auth.login('solisulhiddinov@gmail.com', 'short'), null);
+  assert.equal(auth.login('owner@example.com', 'short'), null);
   t.after(() => auth.close());
   const api = createOwnerApi({
     service,
@@ -94,13 +94,13 @@ test('Owner API denies unauthenticated access and rejects cross-origin mutations
   })).status, 401);
   const rejected = await callApi(api, {
     method: 'POST', route: '/login', origin: 'https://attacker.example',
-    body: { email: 'solisulhiddinov@gmail.com', password: 'a-secure-owner-password' }
+    body: { email: 'owner@example.com', password: 'a-secure-owner-password' }
   });
   assert.equal(rejected.status, 403);
 
   const login = await callApi(api, {
     method: 'POST', route: '/login',
-    body: { email: 'solisulhiddinov@gmail.com', password: 'a-secure-owner-password' }
+    body: { email: 'owner@example.com', password: 'a-secure-owner-password' }
   });
   assert.equal(login.status, 200);
   assert.equal(login.json.authenticated, true);
@@ -115,7 +115,7 @@ test('Owner API denies unauthenticated access and rejects cross-origin mutations
 test('authenticated Owner can submit a Main Agent task and receive clarification safely', async t => {
   const { service, database } = fixture(t);
   const auth = createOwnerAuth({
-    email: 'solisulhiddinov@gmail.com',
+    email: 'owner@example.com',
     passwordHash: hashPassword('a-secure-owner-password'),
     secure: () => ''
   });
@@ -142,7 +142,7 @@ test('authenticated Owner can submit a Main Agent task and receive clarification
   t.after(() => api.close());
   const login = await callApi(api, {
     method: 'POST', route: '/login',
-    body: { email: 'solisulhiddinov@gmail.com', password: 'a-secure-owner-password' }
+    body: { email: 'owner@example.com', password: 'a-secure-owner-password' }
   });
   const cookie = login.headers['set-cookie'].split(';')[0];
 

@@ -31,7 +31,7 @@
     uz: {
       title: "TezBooking — turlarni qidirish",
       nav_tours: "Turlar", nav_hotels: "Mehmonxonalar", nav_flights: "Aviachiptalar", nav_offers: "Mijozga takliflar",
-      soon: "tez orada", aria_menu: "Asosiy menyu", menu_btn: "Menyu", aria_currency: "Valyuta", aria_lang: "Til",
+      soon: "tez orada", aria_menu: "Asosiy menyu", menu_btn: "Menyu", aria_currency: "Valyuta", aria_lang: "Til", theme_dark: "Qorong'i rejim", theme_light: "Yorug' rejim",
       demo_badge: "Demo ma'lumotlar", uzs: "so'm",
 
       h1: "Barcha turoperatorlarning turlari bir joyda",
@@ -105,6 +105,10 @@
       live_failed: "Operatorlardan narx olib bo'lmadi. Birozdan keyin qayta urinib ko'ring.",
       live_empty_title: "Bu sana uchun operatorlarda tur topilmadi",
       live_empty_text: "Boshqa sana yoki tunlar sonini tanlang. Ba'zi operatorlar ochiq qidiruvni yopib qo'ygan — ular API kaliti bilan ulanadi.",
+      live_empty_title_h: "Bu sana uchun operatorlarda mehmonxona topilmadi",
+      live_note_f: "Haqiqiy narxlar: {n} ta operatorning charter reyslari, hozirgina olindi. Narx barcha yo'lovchilar uchun jami. Bron qilishdan oldin operator saytida tekshiring.",
+      live_empty_title_f: "Bu sana uchun operatorlarda reys topilmadi",
+      live_empty_text_f: "Operatorlar charter reyslarni faqat ma'lum kunlarda sotadi. Kunlar tasmasidan boshqa sanani yoki boshqa davlatni tanlang.",
       live_badge: "Jonli narx", live_badge_hint: "Operatorning o'z qidiruvidan olingan haqiqiy narx",
       f_ops_note: "", ops_all: "Hammasi", ops_none: "Hech biri", ops_more: "Yana {n} ta operator", ops_less: "Kamroq ko'rsatish",
       ops_note: "Jonli narx — operatorning ochiq qidiruvidan. \"demo\" belgili operatorlar API kaliti berilgach ulanadi.",
@@ -187,7 +191,7 @@
     ru: {
       title: "TezBooking — поиск туров",
       nav_tours: "Туры", nav_hotels: "Отели", nav_flights: "Авиабилеты", nav_offers: "Подборки",
-      soon: "скоро", aria_menu: "Главное меню", menu_btn: "Меню", aria_currency: "Валюта", aria_lang: "Язык",
+      soon: "скоро", aria_menu: "Главное меню", menu_btn: "Меню", aria_currency: "Валюта", aria_lang: "Язык", theme_dark: "Тёмная тема", theme_light: "Светлая тема",
       demo_badge: "Демо-данные", uzs: "сум",
 
       h1: "Туры всех туроператоров в одном месте",
@@ -267,6 +271,10 @@
       live_failed: "Не удалось получить цены у операторов. Попробуйте чуть позже.",
       live_empty_title: "На эту дату у операторов нет туров",
       live_empty_text: "Выберите другую дату или число ночей. Некоторые операторы закрыли открытый поиск — они подключаются по API-ключу.",
+      live_empty_title_h: "На эту дату у операторов нет отелей",
+      live_note_f: "Реальные цены: чартерные рейсы {n} туроператоров, только что. Цена — итого за всех пассажиров. Перед бронированием проверьте на сайте оператора.",
+      live_empty_title_f: "На эту дату у операторов нет рейсов",
+      live_empty_text_f: "Чартеры продаются только в определённые дни. Выберите другую дату в ленте дней или другую страну.",
       live_badge: "Живая цена", live_badge_hint: "Реальная цена из поиска самого туроператора",
       f_ops_note: "", ops_all: "Все", ops_none: "Ни одного", ops_more: "Ещё {n} операторов", ops_less: "Свернуть",
       ops_note: "Живая цена — из открытого поиска оператора. Операторы с пометкой «demo» подключатся после выдачи API-ключа.",
@@ -349,7 +357,7 @@
     en: {
       title: "TezBooking — tour search",
       nav_tours: "Tours", nav_hotels: "Hotels", nav_flights: "Flights", nav_offers: "Client offers",
-      soon: "soon", aria_menu: "Main menu", menu_btn: "Menu", aria_currency: "Currency", aria_lang: "Language",
+      soon: "soon", aria_menu: "Main menu", menu_btn: "Menu", aria_currency: "Currency", aria_lang: "Language", theme_dark: "Dark mode", theme_light: "Light mode",
       demo_badge: "Demo data", uzs: "UZS",
 
       h1: "Tours from every operator in one place",
@@ -425,6 +433,10 @@
       live_failed: "Couldn't get prices from the operators. Please try again shortly.",
       live_empty_title: "No tours from operators on this date",
       live_empty_text: "Pick another date or number of nights. Some operators have closed their open search — they connect via an API key.",
+      live_empty_title_h: "No hotels from operators on this date",
+      live_note_f: "Real prices: charter flights of {n} tour operators, just now. Price is the total for all passengers. Check on the operator's site before booking.",
+      live_empty_title_f: "No flights from operators on this date",
+      live_empty_text_f: "Charters are sold only on certain days. Pick another date in the day strip or another country.",
       live_badge: "Live price", live_badge_hint: "Real price from the tour operator's own search",
       f_ops_note: "", ops_all: "All", ops_none: "None", ops_more: "{n} more operators", ops_less: "Show less",
       ops_note: "Live price — from the operator's open search. Operators marked \"demo\" connect once they issue an API key.",

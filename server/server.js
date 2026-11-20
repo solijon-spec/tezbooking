@@ -37,10 +37,8 @@ const sameDbPath = process.platform === 'win32'
   ? OWNER_DB_FILE.toLowerCase() === DB_FILE.toLowerCase()
   : OWNER_DB_FILE === DB_FILE;
 if (sameDbPath) throw new Error('OWNER_DB_FILE must be separate from DB_FILE.');
-const OWNER_EMAIL = 'solisulhiddinov@gmail.com';
-if (process.env.OWNER_EMAIL && process.env.OWNER_EMAIL.trim().toLowerCase() !== OWNER_EMAIL) {
-  throw new Error('OWNER_EMAIL is fixed to the designated Owner account.');
-}
+// Owner email faqat .env da (kodda va GitHub'da shaxsiy ma'lumot saqlanmaydi). Bo'sh bo'lsa — Owner kirishi o'chiq.
+const OWNER_EMAIL = (process.env.OWNER_EMAIL || '').trim().toLowerCase();
 
 const PORT = Number(process.env.PORT) || 3000;
 const API_KEY = (process.env.ANTHROPIC_API_KEY || '').trim();
@@ -350,7 +348,7 @@ const runBookings = (req, res, pathname, url) => bookingsApi.handle(req, res, pa
 });
 
 // ---------- Admin panel serveri (faqat admin sahifasi, uning fayllari va admin API) ----------
-const ADMIN_FILES = /^\/(css\/(styles|admin)\.css|js\/(admin|data|demo-seed|demo-api)\.js|images\/[\w.-]+\.(png|jpg|svg))$/;
+const ADMIN_FILES = /^\/(css\/(styles|admin)\.css|js\/(admin|data|demo-seed|demo-api|theme)\.js|images\/[\w.-]+\.(png|jpg|svg))$/;
 const adminServer = ADMIN_SEPARATE && http.createServer((req, res) => {
   let url;
   try { url = new URL(req.url, 'http://localhost'); } catch (e) { return sendJson(res, 400, { error: 'bad_path' }); }

@@ -57,7 +57,9 @@ function requestOnce(url, { headers, signal, addresses, timeoutMs, maxResponseBy
       callback(null, address.address, address.family);
     };
 
-    const req = transport.request(url, { method: 'GET', headers, signal, lookup }, (res) => {
+    // agent: false — Node'ning umumiy keep-alive agenti ulanishga 5 soniyalik "timeout" qo'yadi va u req.setTimeout'dan
+    // oldin ishga tushib, sekin javob beradigan operatorlarni 25 soniya o'rniga 5 soniyada uzib qo'yardi.
+    const req = transport.request(url, { method: 'GET', headers, signal, lookup, agent: false, timeout: timeoutMs }, (res) => {
       const status = res.statusCode || 502;
       const responseHeaders = Object.assign({}, res.headers, {
         getSetCookie: () => res.headers['set-cookie'] || []

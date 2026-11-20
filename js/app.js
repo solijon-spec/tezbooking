@@ -235,8 +235,8 @@
   // ---------- Ikonkalar ----------
   const svg = (size, body, sw) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw || 2}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
   const I = {
-    // Logo (images/logo-horizontal.png?v=20261119b — asl logo: images/logo.png)
-    logo: '<img class="logo-brand" src="images/logo-horizontal.png?v=20261119b" width="160" height="40" alt="TezBooking">',
+    // Logo (images/logo-horizontal.png?v=20261120a — asl logo: images/logo.png)
+    logo: '<img class="logo-brand" src="images/logo-horizontal.png?v=20261120a" width="160" height="40" alt="TezBooking">',
     check: svg(12, '<path d="M5 12.5 10 17l9-10"></path>', 3.5),
     search: svg(18, '<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>', 2.4),
     plus: svg(18, '<path d="M12 5v14M5 12h14"></path>', 2.4),
@@ -248,8 +248,13 @@
     pin: svg(15, '<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"></path><circle cx="12" cy="9.5" r="2.5"></circle>'),
     bolt: svg(12, '<path d="M13 3 5 14h6l-1 7 8-11h-6z"></path>', 2.4),
     close: svg(18, '<path d="M6 6l12 12M18 6 6 18"></path>', 2.2),
-    menu: svg(22, '<path d="M4 7h16M4 12h16M4 17h16"></path>', 2.2)
+    menu: svg(22, '<path d="M4 7h16M4 12h16M4 17h16"></path>', 2.2),
+    sun: svg(18, '<circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path>', 2.2),
+    moon: svg(18, '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path>', 2.2)
   };
+  const theme = () => (window.TezTheme ? window.TezTheme.get() : 'light');
+  // Mavzu almashsa (tugma yoki qurilma sozlamasi) — tugma belgisi yangilanadi
+  document.addEventListener('tez:theme', () => { if (typeof render === 'function') render(); });
 
   // ---------- Hisoblash: holatdan ko'rinish uchun ma'lumot ----------
   let offerIndex = {}; // taklif kaliti -> { h, o }
@@ -305,8 +310,10 @@
     const ap = D.AIRPORTS[to];
     const rt = state.trip === 'rt';
     const ret = rt ? retDate() : null;
-    const fq = (off) => ({ from: state.from, to, ret: rt ? dt.addDays(ret, off) : null, adults: state.adults, childAges: state.childAges, cabin: state.cabin });
-    const all = D.flightsFor(fq(0), state.date);
+    const fq = flightQ;
+    const liveMode = isLiveF();
+    const flightsOn = (q, d) => (liveMode ? D.live.flights(q, d) : D.flightsFor(q, d));
+    const all = flightsOn(fq(0), state.date);
     offerIndex = {};
     all.forEach(f => { offerIndex[f.key] = { f }; });
 
@@ -332,7 +339,9 @@
 
     const flights = list.map(f => ({
       key: f.key, airline: f.al.name, color: f.al.color, no: f.no,
-      legs: [legV(f.out, f.no, f.fromCode, f.toCode, fromC, toC)].concat(f.back ? [legV(f.back, f.backNo, f.toCode, f.fromCode, toC, fromC)] : []),
+      // Jonli reysda shahar nomi operator javobidan (masalan, Turkiyada Antalya yoki Istanbul)
+      legs: [legV(f.out, f.no, f.fromCode, f.toCode, f.fromCity || fromC, f.toCity || toC)]
+        .concat(f.back ? [legV(f.back, f.backNo, f.toCode, f.fromCode, f.toCity || toC, f.fromCity || fromC)] : []),
       bag: t('bag_' + f.bag), hand: f.bag === 'hand', seatsCode: f.seats, seats: t('fseats_' + f.seats),
       price: money(shown(f.price)),
       perPerson: pax > 1 ? paxLabel + ' · ' + t('per_person', { p: money(Math.round(shown(f.price) / pax)) }) : paxLabel,
@@ -344,7 +353,7 @@
       const d = dt.addDays(state.date, off);
       const past = d < today;
       let m = Infinity;
-      if (!past) D.flightsFor(fq(off), d).forEach(f => { if (passFlight(f)) m = Math.min(m, f.price); });
+      if (!past) flightsOn(fq(off), d).forEach(f => { if (passFlight(f)) m = Math.min(m, f.price); });
       return { d, off, m, past };
     });
     const minDay = Math.min.apply(null, dayRaw.map(x => x.m));
@@ -358,7 +367,10 @@
     });
 
     // Aviakompaniyalar filtri (boshqa filtrlardan qat'i nazar, shu kungi barcha reyslar bo'yicha)
-    const airlines = D.AIRLINES.map(al => {
+    // Jonli rejimda aviakompaniyalar — operatorlar javobidagi haqiqiy nomlar
+    const alList = D.AIRLINES.slice();
+    all.forEach(f => { if (!alList.some(a => a.id === f.al.id)) alList.push(f.al); });
+    const airlines = alList.map(al => {
       let cnt = 0, mn = Infinity;
       all.forEach(f => { if (f.al.id === al.id) { cnt++; mn = Math.min(mn, f.price); } });
       return { id: al.id, name: al.name, color: al.color, on: state.fAir[al.id] !== false, cnt, sub: t('flights_n', { n: cnt }) + (isFinite(mn) ? ' · ' + t('from_price', { p: money(shown(mn)) }) : '') };
@@ -373,7 +385,8 @@
       my, to, rt, ret, flights, days, airlines, active,
       destOptions: my.map(id => ({ id, label: airportLabel(id) + ' — ' + countryName(id) })),
       resultsTitle: fromC + ' → ' + toC + ': ' + t('flights_n', { n: flights.length }),
-      summary: [t(rt ? 'trip_rt' : 'trip_ow'), dates, paxLabel, t('cabin_' + state.cabin)].join(' · ')
+      summary: [t(rt ? 'trip_rt' : 'trip_ow'), dates, paxLabel, t('cabin_' + state.cabin)].join(' · '),
+      live: liveMode ? liveFStatus() : null
     };
   }
 
@@ -382,7 +395,47 @@
   let liveReady = false;
   const livePending = {};          // sig -> true (so'rov ketgan)
   const liveFailed = {};           // sig -> xato matni
-  const isLive = () => liveReady && state.tab === 'tours';
+  const isLive = () => liveReady && (state.tab === 'tours' || state.tab === 'hotels');
+  const isLiveF = () => liveReady && state.tab === 'flights';
+  const liveFPending = {}, liveFFailed = {};
+  // Aviachiptalar: so'rov parametrlari (off — kunlar tasmasidagi siljish, qaytish sanasi ham shuncha suriladi)
+  const flightQ = (off) => {
+    const rt = state.trip === 'rt';
+    return { from: state.from, to: fDest(), ret: rt ? dt.addDays(retDate(), off) : null, adults: state.adults, childAges: state.childAges, cabin: state.cabin };
+  };
+  function liveFStatus() {
+    const e = D.live.flightEntry(flightQ(0), state.date);
+    const sig = D.live.fsig(flightQ(0), state.date);
+    return {
+      loading: !e && !liveFFailed[sig] ? 1 : 0, done: e ? 1 : 0, failed: liveFFailed[sig] ? 1 : 0,
+      ops: e ? e.ops.filter(o => o.status === 'ok').length : 0
+    };
+  }
+  function fetchLiveFlights() {
+    if (!isLiveF()) return;
+    const q0 = flightQ(0);
+    if (!q0.to) return;
+    const sig = D.live.fsig(q0, state.date);
+    if (D.live.flightEntry(q0, state.date) || liveFPending[sig] || (liveFFailed[sig] && Date.now() - liveFFailed[sig].at < 60000)) return;
+    delete liveFFailed[sig];
+    // Bitta so'rov — ±3 kun; javob kunlarga ajratib saqlanadi
+    const offs = [-3, -2, -1, 0, 1, 2, 3].filter(n => dt.addDays(state.date, n) > today);
+    const sigs = offs.map(n => D.live.fsig(flightQ(n), dt.addDays(state.date, n))).filter(s => !liveFPending[s]);
+    sigs.forEach(s => { liveFPending[s] = true; });
+    const params = new URLSearchParams({ to: q0.to, date: state.date, window: 3, adults: q0.adults, children: q0.childAges.join(','), from: q0.from, cabin: q0.cabin });
+    if (q0.ret) params.set('ret', q0.ret);
+    const base = state.date;
+    sync.request('/api/live/flights?' + params, {}, 60000).then(data => {
+      offs.forEach(n => {
+        const d = dt.addDays(base, n), q = Object.assign({}, q0, { ret: q0.ret ? dt.addDays(q0.ret, n) : null });
+        if (D.live.flightEntry(q, d) && n !== 0) return;
+        D.live.setFlights(q, d, data);
+      });
+    }).catch(err => {
+      liveFFailed[sig] = { at: Date.now(), error: err.message || 'error' };
+      setTimeout(render, 61000);
+    }).then(() => { sigs.forEach(s => { delete liveFPending[s]; }); render(); });
+  }
   function liveStatus(dests, q) {
     let loading = 0, done = 0, failed = 0;
     const ops = {};
@@ -396,23 +449,28 @@
     return { loading, done, failed, ops: Object.keys(ops).length };
   }
   function fetchLive() {
+    fetchLiveFlights();
     if (!isLive()) return;
+    const hotelsOnly = isHotels();
     const q = query();
     // Bitta so'rov — tanlangan kun ±3 kun; javob kunlarga ajratib saqlanadi (kunlar tasmasi ham haqiqiy narxda)
     const days = [-3, -2, -1, 0, 1, 2, 3].map(n => dt.addDays(state.date, n)).filter(d => d > today);
     destList().forEach(c => {
       const sig = D.live.sig(c, q, state.date);
-      if (D.live.entry(c, q, state.date) || livePending[sig]) return;
+      // Xato bo'lsa — darhol qayta so'ralmaydi (aks holda har chizishda so'rov ketib, limitga uriladi)
+      if (D.live.entry(c, q, state.date) || livePending[sig] || (liveFailed[sig] && Date.now() - liveFailed[sig].at < 60000)) return;
       const sigs = days.map(d => D.live.sig(c, q, d)).filter(s => !livePending[s]);
       sigs.forEach(s => { livePending[s] = true; delete liveFailed[s]; });
-      const params = new URLSearchParams({ country: c, date: state.date, window: 3, nights: q.nights, adults: q.adults, children: q.childAges.join(','), from: q.from });
-      sync.request('/api/live/tours?' + params, {}, 60000).then(data => {
+      const params = new URLSearchParams({ country: c, date: state.date, window: 3, nights: q.nights, adults: q.adults, children: q.childAges.join(',') });
+      if (!hotelsOnly) params.set('from', q.from);
+      sync.request('/api/live/' + (hotelsOnly ? 'hotels' : 'tours') + '?' + params, {}, 60000).then(data => {
         days.forEach(d => {
           if (D.live.entry(c, q, d) && d !== state.date) return;
           D.live.set(c, q, d, { operators: data.operators, offers: (data.offers || []).filter(o => o.checkIn === d) });
         });
       }).catch(err => {
-        liveFailed[sig] = err.message || 'error';
+        liveFailed[sig] = { at: Date.now(), error: err.message || 'error' };
+        setTimeout(render, 61000);
       }).then(() => { sigs.forEach(s => { delete livePending[s]; }); render(); });
     });
   }
@@ -628,6 +686,7 @@
       <div class="topbar-right">
         ${seg('lang', L.LANGS.map(l => ({ id: l.id, text: l.short, lang: l.id, title: l.label })), state.lang, t('aria_lang'))}
         ${seg('cur', [{ id: 'USD', text: 'USD' }, { id: 'UZS', text: 'UZS' }], state.cur, t('aria_currency'))}
+        <button type="button" class="theme-btn" data-action="theme" aria-label="${esc(t(theme() === 'dark' ? 'theme_light' : 'theme_dark'))}" title="${esc(t(theme() === 'dark' ? 'theme_light' : 'theme_dark'))}">${theme() === 'dark' ? I.sun : I.moon}</button>
         ${viewAccountBtn()}
         <span class="badge-demo">${esc(t('demo_badge'))}</span>
       </div>
@@ -885,10 +944,18 @@
       <div class="seg" role="group" aria-label="${esc(t('price_type'))}">${seg('mode', [{ id: 'net', label: t('mode_net') }, { id: 'client', label: t('mode_client', { m: MARKUP }) }], state.mode)}</div>
     </div>
   </div>
-  <p class="demo-note">${esc(t('demo_note_f'))}</p>
+  ${vm.live ? `
+  <p class="live-note${vm.live.loading ? ' loading' : ''}" data-key="live-note" role="status">
+    <span class="live-dot" aria-hidden="true"></span>
+    ${esc(vm.live.loading ? t('live_loading') : vm.live.failed && !vm.live.done ? t('live_failed') : t('live_note_f', { n: vm.live.ops }))}
+  </p>` : `<p class="demo-note">${esc(t('demo_note_f'))}</p>`}
   ${viewGate()}
   ${vm.flights.map(viewFlight).join('')}
-  ${vm.flights.length ? '' : `
+  ${vm.flights.length || (vm.live && vm.live.loading) ? '' : vm.live ? `
+  <div class="empty" data-key="empty-live">
+    <p class="bold" style="font-size:17px">${esc(t('live_empty_title_f'))}</p>
+    <p class="muted" style="margin:6px 0 14px;font-size:14px">${esc(t('live_empty_text_f'))}</p>
+  </div>` : `
   <div class="empty" data-key="empty">
     <p class="bold" style="font-size:17px">${esc(t('empty_title_f'))}</p>
     <p class="muted" style="margin:6px 0 14px;font-size:14px">${esc(t('empty_text_f'))}</p>
@@ -1082,7 +1149,7 @@
   ${vm.hotels.map(viewHotel).join('')}
   ${vm.hotels.length || (vm.live && vm.live.loading) ? '' : vm.live ? `
   <div class="empty" data-key="empty-live">
-    <p class="bold" style="font-size:17px">${esc(t('live_empty_title'))}</p>
+    <p class="bold" style="font-size:17px">${esc(t(isHotels() ? 'live_empty_title_h' : 'live_empty_title'))}</p>
     <p class="muted" style="margin:6px 0 14px;font-size:14px">${esc(t('live_empty_text'))}</p>
   </div>` : `
   <div class="empty" data-key="empty">
@@ -1309,6 +1376,7 @@
   const actions = {
     lang: (id) => setState({ lang: id }),
     cur: (id) => setState({ cur: id }),
+    theme: () => { if (window.TezTheme) window.TezTheme.toggle(); },   // 'tez:theme' hodisasi qayta chizadi
     menu: () => setState({ menuOpen: !state.menuOpen }),
     tab: (id) => {
       if (TABS.indexOf(id) < 0) return;

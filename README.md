@@ -36,7 +36,7 @@ login'siz ochiq: server o'sha sahifa brauzerga beradigan so'rovni yuboradi, javo
 
 Live qidiruvi mijozlar uchun ochiq qoladi, shuning uchun u egasiga tegishli maxfiy API emas. Server qat'iy sana/yo'lovchi/yo'nalish tekshiruvi, IP va global daqiqalik limitlar, operatorlar bo'yicha parallelizm chegarasi, maksimal navbat va 25 soniyalik qidiruv muddati qo'llaydi. Operatorlarning xom xato matni API javobida berilmaydi.
 
-Tashqi so'rovlar faqat konfiguratsiyadagi operator hostiga yuboriladi: DNS natijalaridagi loopback/privat manzillar bloklanadi, IP ulanishdan oldin tekshiriladi va shu tekshirilgan IP'ga ulanadi. Redirect faqat shu operator origin'ida qolsa kuzatiladi. Prestige va Selfie manbalari hozirgi konfiguratsiyada HTTP ishlatgani sababli ular uchun trafik shifrlanmaydi; HTTPS manzili tasdiqlanmaguncha parol yoki maxfiy ma'lumot yuborilmasligi kerak.
+Tashqi so'rovlar faqat konfiguratsiyadagi operator hostiga yuboriladi: DNS natijalaridagi loopback/privat manzillar bloklanadi, IP ulanishdan oldin tekshiriladi va shu tekshirilgan IP'ga ulanadi. Redirect faqat shu operator origin'ida qolsa kuzatiladi. Barcha manbalar HTTPS orqali so'raladi (Prestige va Selfie ham 2026-11 dan HTTPS). Anex o'z saytini SAMO'dan boshqa tizimga ko'chirgani uchun jonli qidiruvdan chiqarilgan — filtrda qoladi, API kaliti bilan ulanadi.
 
 `LIVE_GLOBAL_CONCURRENCY`, `LIVE_OPERATOR_CONCURRENCY`, `LIVE_MAX_QUEUE`, `LIVE_RATE_PER_MIN`, `LIVE_GLOBAL_RATE_PER_MIN`, `LIVE_TIMEOUT_MS` sozlamalari `.env.example`-da berilgan. Standart qiymatlar: global 12/bitta operatorga 2, navbat 100, har bir IP uchun 20 va global 300 so'rov/daqiqa, qidiruv muddati 25 soniya. Limit to'lganda operator darajasida `busy` yoki HTTP `429` qaytadi.
 
@@ -207,7 +207,7 @@ Server qayta ishga tushsa, qayta kirish kerak.
 
 Manzil: **http://localhost:3000/owner**. Bu mavjud agentlik va mijoz sahifalaridan alohida, serverda autentifikatsiya qilinadigan Owner paneli.
 
-1. `.env` faylida `OWNER_EMAIL=solisulhiddinov@gmail.com` qoldiring va Owner parol xeshini yarating:
+1. `.env` faylida `OWNER_EMAIL=` ga o'z emailingizni yozing va Owner parol xeshini yarating:
    ```sh
    npm run owner:password
    ```

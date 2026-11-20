@@ -194,7 +194,12 @@
     const dayStart = new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
     return now() >= dayStart + rnd(key + 'sot') * 86400000;
   }
-  const isGone = (key) => !!booked[key] || soldOut(key);
+  // Jonli (haqiqiy) takliflar kalitlari: ularga demo "sotilib ketdi" simulyatsiyasi qo'llanmaydi —
+  // aks holda haqiqiy takliflarning ~12 % i tasodifan yashirilib qolardi. Faqat haqiqiy bronlar hisobga olinadi.
+  const liveKeys = new Set();
+  // Shakl bo'yicha ham: mehmonxona 'L<hash>|...', reys 'F|aviakompaniya|<operator>.<reys>|...' (sahifa yangilanganda saqlangan takliflar uchun)
+  const isLiveKey = (key) => liveKeys.has(key) || /^L[0-9a-z]+\|/.test(key) || /^F\|[^|]+\|[a-z]+\.[^|]+\|/.test(key);
+  const isGone = (key) => !!booked[key] || (!isLiveKey(key) && soldOut(key));
   function setBooked(keys) {
     Object.keys(booked).forEach(k => { delete booked[k]; });
     keys.forEach(k => { booked[k] = true; });
@@ -356,6 +361,7 @@
       if (!list.length) entry.hotelIds.push(hid);
       // Kalit formati demo bilan bir xil: mehmonxona|operator|sana|tunlar|kattalar|bolalar|xonalar|jo'nash
       const key = [hid, r.opId + '.' + (r.roomKey || hash(r.room)) + '.' + (r.mealKey || r.meal), dateIso, q.nights, q.adults, (q.childAges || []).join('.'), 1, tailOf(q)].join('|');
+      liveKeys.add(key);
       const prev = list.find(o => o.key === key);
       if (prev && prev.price <= r.price) return;
       const offer = { key, op: OP_BY_ID[r.opId], meal: r.meal, mealRaw: r.mealRaw, room: r.room || 'std', price: r.price,
@@ -399,6 +405,7 @@
       const al = airlineOf(o.airline);
       // Kalit formati demo bilan bir xil: F|aviakompaniya|reys|qayerdan|qayerga|uchish|qaytish|kattalar|bolalar|klass
       const key = ['F', al.id, o.opId + '.' + o.freight, q.from, q.to, dateIso, q.ret || '', q.adults, (q.childAges || []).join('.'), q.cabin].join('|');
+      liveKeys.add(key);
       if (byKey[key] && byKey[key].price <= o.price) return;
       byKey[key] = {
         key, al, op: OP_BY_ID[o.opId], to: q.to, no: o.no, backNo: o.back ? o.back.no : '', aircraft: o.aircraft || '',

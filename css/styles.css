@@ -539,3 +539,94 @@ html.wp-lock { overflow: hidden; }
 .acc-top-in:hover { background: #E6EFFF; }
 .acc-top-text span { color: var(--muted); }
 @media (max-width: 760px) { .logo-brand { height: 42px; } }
+/* ---------- Mavzu tugmasi (yorug' / qorong'i) ---------- */
+.theme-btn { width: var(--tap); height: var(--tap); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid var(--line-strong); background: transparent; color: var(--navy); transition: background-color .2s, color .2s; }
+.theme-btn:hover { background: #EEF3FB; }
+
+/* ---------- Qorong'i rejim (js/theme.js: <html data-theme="dark">) ----------
+   --navy matn rangi sifatida ochiq rangga aylanadi; to'q fon kerak bo'lgan joylar pastda alohida beriladi. */
+:root[data-theme="dark"] {
+  --navy: #E6ECF7;
+  --muted: #9FADC8;
+  --line: #22304A;
+  --line-strong: #33446A;
+  --bg: #0A1120;
+  --blue: #5B9BFF;
+  --accent-2: #4FA3FF;
+  --link: #6AA8FF;
+  --surface: #111B2E;
+  --surface-2: #0D1628;
+  --surface-3: #1A2740;
+  --ink: #2A4C8E;           /* tanlangan tugmalar foni (yorug'da --navy edi) */
+  color-scheme: dark;
+}
+:root[data-theme="dark"] body { background: var(--bg); color: var(--navy); }
+
+/* Oq kartalar va maydonlar -> to'q yuza */
+:root[data-theme="dark"] :is(.btn, .card, .chip, .country-card, .input, .hot, .day, .filter-search input, .star-btn, .hotel, .orow, .op-pill, .empty,
+  .panel, .chat, .msg-ai, .chat-chip, .chat-retry, .acc-modal, .topbar, .chat-form textarea, select, textarea, input[type=text], input[type=password], input[type=email], input[type=number], input[type=search], input[type=date]) {
+  background-color: var(--surface); color: var(--navy); border-color: var(--line-strong);
+}
+:root[data-theme="dark"] :is(.settings, .chat-log, .chat-suggest, .compare, .acc-info, .acc-top-in, .ad-cred) { background: var(--surface-2); color: var(--navy); }
+:root[data-theme="dark"] :is(.offers, .orow, .compare) { border-color: var(--line); }
+:root[data-theme="dark"] .topbar { border-bottom-color: var(--line); }
+
+/* Yuqori panel */
+:root[data-theme="dark"] :is(.nav a:hover, .nav button:hover, .seg-dark, .theme-btn:hover, .topbar .btn-ghost:hover, .acc-top-in:hover) { background: var(--surface-3); }
+:root[data-theme="dark"] :is(.nav a[aria-current="page"], .nav button[aria-current="page"]) { background: #17305E; color: #8DBBFF; }
+:root[data-theme="dark"] .badge-demo { background: #17305E; color: #8DBBFF; }
+/* Logo: "booking" so'zi to'q ko'k — qorong'i fonda oq taglikda ko'rsatiladi */
+:root[data-theme="dark"] .logo-brand { background: #fff; border-radius: 12px; padding: 4px 10px; box-sizing: content-box; height: 40px; }
+@media (max-width: 760px) { :root[data-theme="dark"] .logo-brand { height: 34px; } }
+
+/* Tanlangan holatlar (yorug'da to'q ko'k fon edi) */
+:root[data-theme="dark"] :is(.btn-dark, .btn-add[aria-pressed="true"], .chip[aria-pressed="true"], .day.selected, .star-btn[aria-pressed="true"], .rating, .bar, .chat-launcher, .chat-head, .msg-user, .chat-send.is-stop) {
+  background: var(--ink); border-color: var(--ink); color: #fff;
+}
+:root[data-theme="dark"] .chat-launcher { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+:root[data-theme="dark"] .search-hero { background-color: #0E1E3D; }
+:root[data-theme="dark"] .country-card.on, :root[data-theme="dark"] .btn-add-sm { border-color: #6AA8FF; }
+/* To'q sariq fon ustidagi matn har doim to'q */
+:root[data-theme="dark"] :is(.count, .chip[aria-pressed="true"] .tick, .seg-dark button[aria-pressed="true"]) { color: #0B2350; }
+:root[data-theme="dark"] .seg-dark button[aria-pressed="true"] { color: #fff; }
+:root[data-theme="dark"] input[type=checkbox], :root[data-theme="dark"] input[type=range] { accent-color: #5B9BFF; }
+
+/* Segment tugmalar */
+:root[data-theme="dark"] .seg { background: var(--surface-2); }
+:root[data-theme="dark"] .seg button { color: var(--muted); }
+:root[data-theme="dark"] .seg button[aria-pressed="true"] { background: var(--surface-3); color: var(--navy); box-shadow: none; }
+
+/* Rangli belgilar (pill) — to'q fonga mos */
+:root[data-theme="dark"] .pill, :root[data-theme="dark"] .av-req, :root[data-theme="dark"] .acc-plan { background: #1C2A45; color: #C5D2EC; }
+:root[data-theme="dark"] .pill.instant { background: #172C57; color: #A9C6FF; }
+:root[data-theme="dark"] :is(.av-ok, .acc-plan.on, .live-badge) { background: #0F3326; color: #7EE2B0; }
+:root[data-theme="dark"] :is(.av-few, .best-pill, .acc-wait) { background: #3A2708; color: #FFC266; }
+:root[data-theme="dark"] .av-stop { background: #3A1416; color: #FF9EA1; }
+:root[data-theme="dark"] :is(.save, .leg-direct, .acc-save) { color: #6EDBA6; }
+:root[data-theme="dark"] :is(.leg-pt sup, .chat-err, .acc-error) { color: #FF8A8E; }
+:root[data-theme="dark"] :is(.day.cheapest, .op-pill.best, .orow.best, .msg-refused) { background: #2A1F0C; }
+:root[data-theme="dark"] .day.cheapest .tag { color: #FFC266; }
+:root[data-theme="dark"] .chat-status { background: #3A2708; color: #FFC266; border-color: #5A3E12; }
+:root[data-theme="dark"] .chat-retry { color: #FFC266; border-color: #7A5418; }
+:root[data-theme="dark"] .live-note { background: #0C2A30; border-color: #15515A; color: #8FE3EC; }
+:root[data-theme="dark"] .live-note.loading, :root[data-theme="dark"] .op-demo { background: var(--surface-2); color: var(--muted); }
+:root[data-theme="dark"] :is(.wp-item.wp-off, .wp-item.wp-off .wp-wd) { color: #6B7A96; }
+:root[data-theme="dark"] .toast { background: #1E3A70; }
+
+/* Admin panel (css/admin.css) */
+:root[data-theme="dark"] code, :root[data-theme="dark"] .ad-chip, :root[data-theme="dark"] .ad-s-past { background: #1C2A45; color: #C5D2EC; }
+:root[data-theme="dark"] .ad-table tbody tr:hover { background: var(--surface-3); }
+:root[data-theme="dark"] :is(.ad-p-tour, .ad-s-now, .ad-s-wait) { background: #3A2708; color: #FFC266; }
+:root[data-theme="dark"] .ad-p-hotel { background: #172C57; color: #A9C6FF; }
+:root[data-theme="dark"] :is(.ad-p-flight, .ad-s-ok) { background: #0F3326; color: #7EE2B0; }
+:root[data-theme="dark"] .ad-s-off { background: #3A1416; color: #FF9EA1; }
+:root[data-theme="dark"] :is(.ad-danger, .ad-error) { color: #FF8A8E; }
+:root[data-theme="dark"] .ad-danger { border-color: #6A2A2D; }
+:root[data-theme="dark"] .ad-danger:hover { background: #3A1416; }
+:root[data-theme="dark"] :is(.ad-banner, .ad-notice) { background: #2A1F0C; color: #FFC266; border-color: #5A3E12; }
+:root[data-theme="dark"] .ad-toast { background: var(--ink); }
+
+/* Mavzu almashganda ranglar yumshoq o'tsin (harakatni kamaytirish so'ralmagan bo'lsa) */
+@media (prefers-reduced-motion: no-preference) {
+  body, .topbar, .card, .hotel, .chip, .day, .btn, .input, .panel { transition: background-color .25s ease, border-color .25s ease, color .25s ease; }
+}

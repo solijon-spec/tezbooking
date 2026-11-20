@@ -63,7 +63,7 @@
     }
   }
 
-  const logo = '<img class="logo-brand" src="images/logo-horizontal.png?v=20261119b" width="136" height="34" alt="TezBooking">';
+  const logo = '<img class="logo-brand" src="images/logo-horizontal.png?v=20261120a" width="136" height="34" alt="TezBooking">';
   const brand = `<div class="ad-brand">${logo}<em>admin</em></div>`;
 
   // ---------- Kirish va xabar ekranlari ----------
@@ -98,6 +98,12 @@
     });
   }
 
+  const icon = (d) => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
+  const THEME_ICONS = {
+    sun: icon('<circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path>'),
+    moon: icon('<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path>')
+  };
+
   // ---------- Panel skeleti ----------
   function shell() {
     root.innerHTML = `
@@ -106,6 +112,7 @@
     ${brand}
     <span class="ad-live" id="live"><i></i><span>Ulanmoqda…</span></span>
     <div class="ad-top-right">
+      <button type="button" class="theme-btn" id="theme-btn"></button>
       <a class="btn btn-ghost btn-sm" href="${esc(siteUrl)}" target="_blank" rel="noopener">Saytga o'tish</a>
       <button type="button" class="btn btn-ghost btn-sm" id="logout">Chiqish</button>
     </div>
@@ -116,6 +123,19 @@
 <main class="container ad-main" id="view"></main>
 <dialog id="dlg" class="ad-dialog" aria-labelledby="dlg-title"><div id="dlg-body"></div></dialog>
 <div class="ad-toast" id="toast" role="status" aria-live="polite"></div>`;
+
+    // Yorug' / qorong'i rejim (js/theme.js)
+    const themeBtn = document.getElementById('theme-btn');
+    const paintTheme = () => {
+      const dark = window.TezTheme && window.TezTheme.get() === 'dark';
+      const label = dark ? "Yorug' rejim" : "Qorong'i rejim";
+      themeBtn.setAttribute('aria-label', label);
+      themeBtn.title = label;
+      themeBtn.innerHTML = dark ? THEME_ICONS.sun : THEME_ICONS.moon;
+    };
+    paintTheme();
+    themeBtn.addEventListener('click', () => { if (window.TezTheme) window.TezTheme.toggle(); });
+    document.addEventListener('tez:theme', paintTheme);
 
     document.getElementById('logout').addEventListener('click', async () => {
       try { await api('/logout', {}); } catch (e) { /* baribir chiqamiz */ }

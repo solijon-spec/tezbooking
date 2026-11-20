@@ -12,9 +12,9 @@ const { createConcurrencyLimiter, createRateLimiter } = require('./limits');
 const { parseLiveQuery } = require('./validation');
 
 const OPERATORS = [
-  { id: 'prestige', search: 'http://online.uz-prestige.com/search_tour' },
+  { id: 'prestige', search: 'https://online.uz-prestige.com/search_tour' },
   { id: 'kazunion', search: 'https://online.kazunion.com/search_tour' },
-  { id: 'selfie', search: 'http://b2b.selfietravel.kz/search_tour' },
+  { id: 'selfie', search: 'https://b2b.selfietravel.kz/search_tour' },
   { id: 'savtour', search: 'https://online.savtour.az/search_tour' },
   { id: 'vietratour', search: 'https://b2b.vietratour.com/search_tour' },
   { id: 'fstravel', search: 'https://b2b.fstravel.asia/search_tour' },
@@ -24,7 +24,7 @@ const OPERATORS = [
   { id: 'easybooking', search: 'https://tours.easybooking.uz/search_tour' },
   { id: 'kompas', search: 'https://online.uz.kompastour.com/search_tour' },
   { id: 'centrum', search: 'https://online.centrum-holidays.com/search_tour' },
-  { id: 'anex', search: 'https://b2b.anextour.uz/search_tour' },
+  // anex: 2026-11 dan SAMO emas (yangi Next.js sayt, search_tour 404) — API kaliti bilan ulanadi
   { id: 'aqua', search: 'https://agency.aqua-travelgroup.com/search_tour' }
 ];
 const CACHE_MS = 10 * 60000;

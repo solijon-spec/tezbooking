@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>TezBooking Agent Demo</title>
+  <link rel="stylesheet" href="/owner.css">
+  <link rel="stylesheet" href="/owner-demo.css">
+  <script src="/owner.js" defer></script>
+</head>
+<body>
+  <aside class="demo-banner">
+    DEMO SIMULATION — Worker, hotel, price, and availability are fictional. No supplier requests are made.
+    All demo data is temporary and deleted when the server stops.
+  </aside>
+  <main id="login-view" class="login-view" hidden>
+    <form id="login-form" class="login-card">
+      <a class="brand brand-login" href="/owner-demo" aria-label="TezBooking"><span class="brand-mark">T</span><span>TEZBOOKING<small>AGENT DEMO</small></span></a>
+      <p class="eyebrow">LOCAL SIMULATION</p>
+      <h1>Agent demo</h1>
+      <p class="muted">Use the one-time credentials printed in the terminal.</p>
+      <label>Email address<input name="email" type="email" autocomplete="username" required value="demo@tezbooking.local"></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required minlength="12"></label>
+      <p id="login-error" class="form-error" role="alert"></p>
+      <button class="button button-primary button-wide" type="submit">Open simulation <span aria-hidden="true">→</span></button>
+      <p class="login-foot">Loopback only · No production database or supplier access</p>
+    </form>
+  </main>
+
+  <div id="app-view" class="app-shell" hidden>
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="/owner-demo" aria-label="TezBooking Agent Demo"><span class="brand-mark">T</span><span>TEZBOOKING<small>AGENT DEMO</small></span></a>
+      <div class="workspace-label">SIMULATION</div>
+      <nav class="navigation" aria-label="Agent demo console">
+        <button class="nav-item active" data-view="overview"><span class="nav-icon">◫</span>Overview</button>
+        <button class="nav-item" data-view="agents"><span class="nav-icon">✳</span>Agent monitor</button>
+        <button class="nav-item" data-view="operators"><span class="nav-icon">◎</span>Operators<span id="nav-pending" class="nav-count">—</span></button>
+        <button class="nav-item" data-view="search"><span class="nav-icon">⌕</span>Search console</button>
+        <button class="nav-item" data-view="history"><span class="nav-icon">◷</span>Search history</button>
+        <button class="nav-item" data-view="activity"><span class="nav-icon">↗</span>Activity</button>
+        <button class="nav-item" data-view="alerts"><span class="nav-icon">◇</span>Alerts &amp; logs</button>
+        <button class="nav-item" data-view="settings"><span class="nav-icon">⚙</span>Settings</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="connection"><span class="status-dot status-live"></span><span><b>Demo service online</b><small>Temporary local database</small></span></div>
+        <div class="user-card"><span class="avatar">D</span><span class="user-copy"><b>Demo Owner</b><small id="owner-email">Authenticated</small></span><button id="logout-button" class="icon-button" title="Sign out" aria-label="Sign out">↗</button></div>
+      </div>
+    </aside>
+
+    <div class="main-column">
+      <header class="topbar">
+        <button id="menu-button" class="icon-button menu-button" aria-label="Open navigation">☰</button>
+        <div><p class="breadcrumb">DEMO <span>/</span> <b id="page-title">Overview</b></p><p id="page-subtitle" class="topbar-subtitle">A local simulation of the TezBooking search orchestration.</p></div>
+        <div class="topbar-actions"><span class="live-pill"><i></i> SIMULATED</span><span id="last-updated" class="updated-label">Loading…</span><button id="refresh-button" class="icon-button" title="Refresh data" aria-label="Refresh data">↻</button></div>
+      </header>
+      <section id="notice" class="notice" role="status" hidden></section>
+      <main id="content" class="content" tabindex="-1"></main>
+      <footer class="footer"><span>TEZBOOKING AGENT DEMO</span><span>Simulated worker only · No real supplier integration</span></footer>
+    </div>
+    <div id="sidebar-scrim" class="sidebar-scrim"></div>
+  </div>
+</body>
+</html>

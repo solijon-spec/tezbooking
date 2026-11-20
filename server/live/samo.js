@@ -204,7 +204,9 @@ async function searchHotels(op, q) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT);
   try {
-    const s = await session(op, ctl.signal, 'search_hotel');
+    let s;
+    try { s = await session(op, ctl.signal, 'search_hotel'); }
+    catch (e) { if (e.status === 404) return { offers: [], note: 'no_page' }; throw e; }   // operatorda "faqat mehmonxona" sahifasi yo'q
     const want = (COUNTRY_RU[q.country] || []).map(norm);
     let st = s.states.find(x => want.includes(norm(x.title)));
     if (!st) st = options(await samo(op, 'samo_action=STATEINC', ctl.signal, 'search_hotel'), 'STATEINC').find(x => want.includes(norm(x.title)));
@@ -274,7 +276,9 @@ async function searchFlights(op, q) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT);
   try {
-    const s = await session(op, ctl.signal, 'tickets');
+    let s;
+    try { s = await session(op, ctl.signal, 'tickets'); }
+    catch (e) { if (e.status === 404) return { offers: [], note: 'no_page' }; throw e; }   // operatorda aviachipta sahifasi yo'q
     const wantFrom = (FROM_RU[q.from] || FROM_RU.tas).map(norm);
     const from = s.towns.find(t => wantFrom.some(w => norm(t.title).indexOf(w) === 0));
     if (!from) return { offers: [], note: 'no_departure' };
