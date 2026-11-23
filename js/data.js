@@ -42,18 +42,20 @@
 
   // ---------- Davlatlar ----------
   // flight — bir kishilik aviareys (USD), k — mehmonxona narxi koeffitsienti
+  // 2026-11-23 da operatorlarning ochiq qidiruvidagi bugungi narxlarga moslashtirilgan
+  // (Toshkentdan, 7 tun, 2 kishi, eng arzon tur: demo'dagi eng arzon 3* tur ≈ bugungi eng arzon tur)
   const COUNTRIES = [
     { id: 'tr', region: 'kavkaz', flight: 260, k: 1.0, tint: '#1E5A8A', cities: ['antalya', 'alanya', 'kemer', 'side', 'belek'] },
-    { id: 'ge', region: 'kavkaz', flight: 220, k: 0.8, tint: '#2F6B3A', cities: ['batumi', 'tbilisi'] },
-    { id: 'az', region: 'kavkaz', flight: 210, k: 0.75, tint: '#3B4F8F', cities: ['baku', 'naftalan', 'gabala'] },
-    { id: 'ae', region: 'sharq', flight: 230, k: 1.25, tint: '#7A5410', cities: ['dubai', 'sharjah', 'rak'] },
-    { id: 'eg', region: 'sharq', flight: 300, k: 0.85, tint: '#8A3B12', cities: ['sharm', 'hurghada'] },
+    { id: 'ge', region: 'kavkaz', flight: 225, k: 0.8, tint: '#2F6B3A', cities: ['batumi', 'tbilisi'] },
+    { id: 'az', region: 'kavkaz', flight: 170, k: 0.6, tint: '#3B4F8F', cities: ['baku', 'naftalan', 'gabala'] },
+    { id: 'ae', region: 'sharq', flight: 195, k: 1.05, tint: '#7A5410', cities: ['dubai', 'sharjah', 'rak'] },
+    { id: 'eg', region: 'sharq', flight: 315, k: 0.9, tint: '#8A3B12', cities: ['sharm', 'hurghada'] },
     { id: 'my', region: 'osiyo', flight: 420, k: 0.9, tint: '#14636B', cities: ['kl', 'langkawi'] },
-    { id: 'th', region: 'osiyo', flight: 480, k: 0.85, tint: '#6B3A82', cities: ['phuket', 'pattaya'] },
-    { id: 'vn', region: 'osiyo', flight: 520, k: 0.7, tint: '#8A2E3B', cities: ['nhatrang', 'phuquoc'] },
-    { id: 'id', region: 'osiyo', flight: 560, k: 0.95, tint: '#2E6B4F', cities: ['kuta', 'ubud', 'nusadua'] },
-    { id: 'lk', region: 'osiyo', flight: 450, k: 0.75, tint: '#93450F', cities: ['bentota', 'hikkaduwa'] },
-    { id: 'mv', region: 'osiyo', flight: 520, k: 2.0, tint: '#0E6E8C', cities: ['male', 'ari'] }
+    { id: 'th', region: 'osiyo', flight: 525, k: 0.95, tint: '#6B3A82', cities: ['phuket', 'pattaya'] },
+    { id: 'vn', region: 'osiyo', flight: 600, k: 0.8, tint: '#8A2E3B', cities: ['nhatrang', 'phuquoc'] },
+    { id: 'id', region: 'osiyo', flight: 850, k: 1.45, tint: '#2E6B4F', cities: ['kuta', 'ubud', 'nusadua'] },
+    { id: 'lk', region: 'osiyo', flight: 350, k: 0.6, tint: '#93450F', cities: ['bentota', 'hikkaduwa'] },
+    { id: 'mv', region: 'osiyo', flight: 650, k: 2.0, tint: '#0E6E8C', cities: ['male', 'ari'] }
   ];
   const REGIONS = ['kavkaz', 'sharq', 'osiyo'];
 
@@ -157,7 +159,7 @@
   const byId = {};
   COUNTRIES.forEach(c => { byId[c.id] = c; });
 
-  const UZS_RATE = 12100; // demo kurs: 1 USD = 12 100 so'm (haqiqiy versiyada Markaziy bank kursi olinadi)
+  const UZS_RATE = 12004.48; // Markaziy bank kursi 21.11.2026: 1 USD = 12 004,48 so'm (keyinchalik CBU API'dan avtomatik olinadi)
 
   // ---------- Yordamchilar ----------
   // Demo narxlar har safar bir xil chiqishi uchun "urug'li" tasodifiy son
@@ -340,7 +342,8 @@
   const tailOf = (q) => (q.noFlight ? 'H' : q.from);
   const liveSig = (country, q, dateIso) => [country, dateIso, q.nights, q.adults, (q.childAges || []).join('.'), tailOf(q)].join('|');
   const slug = (s) => String(s).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/g, '');
-  function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
+  // Diqqat: nomi hash() emas — aks holda yuqoridagi hash() ni almashtirib, rnd() doim 0 qaytaradi (barcha demo takliflar yashirinadi)
+  const hash36 = (s) => hash(String(s)).toString(36);
   // Avval ko'rilgan haqiqiy mehmonxonalar (mijozga taklifda qolganlari sahifa yangilanganda ham ochilsin)
   try { (JSON.parse(localStorage.getItem(LIVE_KEY) || '[]') || []).forEach(h => { if (h && h.id) HOTEL_BY_ID[h.id] = h; }); } catch (e) { /* yo'q */ }
   function saveLiveHotels() {
@@ -354,13 +357,13 @@
     const entry = { at: Date.now(), country, hotelIds: [], offers: {}, ops: data.operators || [] };
     (data.offers || []).forEach(r => {
       if (!OP_BY_ID[r.opId] || !r.hotel || !(r.price > 0)) return;
-      const hid = 'L' + hash(country + '|' + slug(r.hotel) + '|' + slug(r.city));
+      const hid = 'L' + hash36(country + '|' + slug(r.hotel) + '|' + slug(r.city));
       if (!HOTEL_BY_ID[hid]) HOTEL_BY_ID[hid] = { id: hid, name: r.hotel, country, city: r.city || '', stars: r.stars || 0, rating: 0, live: true };
       else if (r.stars && !HOTEL_BY_ID[hid].stars) HOTEL_BY_ID[hid].stars = r.stars;
       const list = entry.offers[hid] || (entry.offers[hid] = []);
       if (!list.length) entry.hotelIds.push(hid);
       // Kalit formati demo bilan bir xil: mehmonxona|operator|sana|tunlar|kattalar|bolalar|xonalar|jo'nash
-      const key = [hid, r.opId + '.' + (r.roomKey || hash(r.room)) + '.' + (r.mealKey || r.meal), dateIso, q.nights, q.adults, (q.childAges || []).join('.'), 1, tailOf(q)].join('|');
+      const key = [hid, r.opId + '.' + (r.roomKey || hash36(r.room)) + '.' + (r.mealKey || r.meal), dateIso, q.nights, q.adults, (q.childAges || []).join('.'), 1, tailOf(q)].join('|');
       liveKeys.add(key);
       const prev = list.find(o => o.key === key);
       if (prev && prev.price <= r.price) return;
@@ -393,7 +396,7 @@
     const id = 'L' + slug(name || 'x');
     if (!LIVE_AL[id]) {
       const known = AIRLINES.find(a => slug(a.name) === slug(name));
-      LIVE_AL[id] = known || { id, name: name || '—', code: '', color: AL_COLORS[parseInt(hash(name || 'x'), 36) % AL_COLORS.length] };
+      LIVE_AL[id] = known || { id, name: name || '—', code: '', color: AL_COLORS[parseInt(hash36(name || 'x'), 36) % AL_COLORS.length] };
     }
     return LIVE_AL[id];
   }

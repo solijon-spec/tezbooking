@@ -48,21 +48,9 @@ function addDays(date, nights) {
   return result.toISOString().slice(0, 10);
 }
 
-function createAgentDemo() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tezbooking-agent-demo-'));
-  const database = open(path.join(directory, 'owner.sqlite'));
-  let api;
-  const service = createOwnerService({
-    db: database,
-    emit: event => { if (api) api.emit(event); }
-  });
-  const email = DEMO_EMAIL;
-  const password = crypto.randomBytes(24).toString('base64url') + 'A1!';
-  const auth = createOwnerAuth({ email, passwordHash: hashPassword(password), secure: () => '' });
-  const workers = createWorkerRegistry();
-  const scheduler = createScheduler({ service, workers, pollMs: 100 });
-  let closed = false;
-
+// Taqlidiy (demo) ishchi: faqat Aqua operatori, faqat Turkiya, ~1 soniyada bitta soxta taklif qaytaradi.
+// Faqat alohida demo bazada ishlatiladi (u yerdagi operatorlarni o'chirib, Aqua'ni "verified" qiladi).
+function setupDemoWorker({ database, service, workers }) {
   database.raw.prepare('UPDATE websites SET enabled = 0').run();
   database.raw.prepare(
     "UPDATE websites SET enabled = 1, integration_status = 'verified' WHERE id = 'aqua'"
@@ -105,6 +93,24 @@ function createAgentDemo() {
       };
     }
   });
+}
+
+function createAgentDemo() {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tezbooking-agent-demo-'));
+  const database = open(path.join(directory, 'owner.sqlite'));
+  let api;
+  const service = createOwnerService({
+    db: database,
+    emit: event => { if (api) api.emit(event); }
+  });
+  const email = DEMO_EMAIL;
+  const password = crypto.randomBytes(24).toString('base64url') + 'A1!';
+  const auth = createOwnerAuth({ email, passwordHash: hashPassword(password), secure: () => '' });
+  const workers = createWorkerRegistry();
+  const scheduler = createScheduler({ service, workers, pollMs: 100 });
+  let closed = false;
+
+  setupDemoWorker({ database, service, workers });
 
   const mainAgent = createMainAgent({
     service,
@@ -207,4 +213,4 @@ if (require.main === module) {
   }));
 }
 
-module.exports = { createAgentDemo, DEMO_EMAIL };
+module.exports = { createAgentDemo, setupDemoWorker, DEMO_EMAIL };

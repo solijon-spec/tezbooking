@@ -14,7 +14,9 @@ function sameOrigin(req) {
   } catch (error) { return false; }
 }
 
-function createOwnerApi({ service, auth, sendJson, readBody, clientIp, agent = null, scheduler = null, now = Date.now }) {
+// prefix — API qaysi manzil ostida turadi (admin panelda: /api/admin/agents).
+// manageSession=false — kirish/chiqishni boshqa tizim boshqaradi (admin sessiyasi): /login va /logout yopiq.
+function createOwnerApi({ service, auth, sendJson, readBody, clientIp, agent = null, scheduler = null, now = Date.now, prefix = PREFIX, manageSession = true }) {
   const loginLimiter = createRateLimiter({
     perClientLimit: 5, globalLimit: 100, windowMs: 60000, maxClients: 10000, now
   });
@@ -75,8 +77,10 @@ function createOwnerApi({ service, auth, sendJson, readBody, clientIp, agent = n
   }
 
   async function handle(req, res, pathname, url) {
-    const route = pathname.slice(PREFIX.length) || '/';
+    const route = pathname.slice(prefix.length) || '/';
     const method = req.method;
+
+    if (!manageSession && (route === '/login' || route === '/logout')) return jsonResponse(res, 404, { error: 'not_found' });
 
     if (route === '/login') {
       if (method !== 'POST') return jsonResponse(res, 405, { error: 'method_not_allowed' });

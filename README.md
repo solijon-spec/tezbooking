@@ -223,6 +223,17 @@ Doimiy navbat scheduler orqali ishlaydi: global va operator bo'yicha parallelizm
 
 Fazaviy tekshiruvlar `npm test` orqali bajariladi. Scheduler hozir bitta jarayon va SQLite muhitiga mo'ljallangan; bir nechta server nusxasi, uzoq muddatli lease nazorati va haqiqiy adapterlarning tarmoq xavfsizligi Phase 4 uchun qo'shimcha arxitektura hamda sinovni talab qiladi.
 
+### Agentlarni admin paneldan boshqarish
+
+**Admin panel → Agentlar** (`http://localhost:3001/#agents`) — xuddi shu Main Agent, navbat va ishchilar, lekin kirish **admin paroli** bilan (alohida Owner paroli shart emas). API: `/api/admin/agents/*` (Owner API'ning o'zi, admin sessiyasi bilan; `/login`, `/logout` yopiq, o'zgartiruvchi so'rovlarda Origin tekshiriladi).
+
+- Agentga topshiriq: oddiy matn (uz / ru / en) yoki aniq parametrlar; ma'lumot yetishmasa — aniqlashtiruvchi savollar.
+- Vazifalar: holat, jarayon, takliflar soni, natijalar oynasi, **To'xtatish**; SSE orqali jonli yangilanadi.
+- Operatorlar: yoqish / o'chirish, yangi operator qo'shish (holati "ulanmagan").
+- Navbat sozlamalari, ogohlantirishlar va ishchilar jurnali.
+
+`npm run demo` da agentlar alohida `data/demo-owner.db` bazasida va **taqlidiy ishchi** bilan ishlaydi (Aqua, faqat Turkiya, soxta "Demo Resort" taklifi) — operator saytlariga so'rov yuborilmaydi.
+
 Owner sessiyasi scrypt parol tekshiruvi, HttpOnly/SameSite Strict cookie va ma'lumotni o'zgartiruvchi so'rovlarda Origin tekshiruvi bilan himoyalangan. Bu mahalliy panel internetga chiqarish uchun tayyor degani emas: public deployment uchun HTTPS, ishonchli reverse proxy, server darajasidagi kirish cheklovi va xavfsizlik ko'rigi zarur.
 
 ## Brauzerda saqlanadigan narsalar
@@ -261,4 +272,4 @@ va AI chat tarixi sahifa yangilansa ham saqlanib qoladi (`localStorage`, `tezboo
 2. **Agentlik akkauntlari:** kirish, "Mening davlatlarim", ustama foizi (hozir 10 %) akkauntda saqlanadi.
 3. **Bron:** operator tizimida bron qilish va bron holatini kuzatish.
 4. **Taklif sahifasi:** mijozga yuboriladigan havola va agentlik logosi bilan PDF.
-5. **So'm kursi:** hozir 12 100 ga qotirilgan — Markaziy bank kursidan olinadi.
+5. **So'm kursi:** hozir 12 004,48 ga qotirilgan (CBU, 21.11.2026) — keyinchalik Markaziy bank API'sidan avtomatik olinadi.

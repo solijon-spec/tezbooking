@@ -26,6 +26,10 @@
  *   POST /api/admin/payments/cancel     { id }
  *   GET  /api/admin/tariffs
  *   POST /api/admin/tariffs             { id, price, active }
+ *
+ *   Agentlar (Main Agent, navbat, ishchilar) — Owner API'sining o'zi, admin sessiyasi bilan:
+ *   /api/admin/agents/overview, /main-agent, /websites, /searches, /agent/searches, /settings, /alerts, /logs, /events ...
+ *   (server/owner/index.js, server.js da ulanadi)
  */
 'use strict';
 
@@ -165,7 +169,8 @@ function createAdminApi({ db, sendJson, readBody, notify, password, accounts }) 
   // Muddati o'tgan sessiyalarni tozalash
   setInterval(() => { const now = Date.now(); sessions.forEach((exp, tok) => { if (exp < now) sessions.delete(tok); }); }, 600000).unref();
 
-  return { handle, enabled };
+  // authed — agentlar API'si (/api/admin/agents) ham shu admin sessiyasi bilan himoyalanadi
+  return { handle, enabled, authed: (req) => enabled && authed(req) };
 }
 
 module.exports = { createAdminApi };

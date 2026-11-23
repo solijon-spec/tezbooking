@@ -310,12 +310,16 @@ const ownerAuth = require('./owner/auth').createOwnerAuth({
   passwordHash: process.env.OWNER_PASSWORD_HASH || '',
   secure: secureAttr
 });
-let ownerApi;
+let ownerApi, adminAgentsApi;
 const ownerService = require('./owner/service').createOwnerService({
   db: ownerDb,
-  emit: event => { if (ownerApi) ownerApi.emit(event); }
+  emit: event => { if (ownerApi) ownerApi.emit(event); if (adminAgentsApi) adminAgentsApi.emit(event); }
 });
 const ownerWorkers = require('./owner/worker-registry').createWorkerRegistry();
+// Demo (npm run demo): agentlar alohida demo bazada, taqlidiy ishchi bilan — operator saytlariga so'rov yuborilmaydi
+if (process.env.TEZ_DEMO_AGENTS === '1') {
+  require('./owner/demo-server').setupDemoWorker({ database: ownerDb, service: ownerService, workers: ownerWorkers });
+}
 const ownerScheduler = require('./owner/scheduler').createScheduler({ service: ownerService, workers: ownerWorkers });
 const llmEnabled = ['1', 'true', 'on'].includes(String(process.env.AGENT_LLM_ENABLED || '').trim().toLowerCase());
 const ownerLlmParser = require('./owner/agent/llm').createLlmParser({
@@ -330,6 +334,13 @@ const mainAgent = require('./owner/agent/main').createMainAgent({
 ownerApi = require('./owner').createOwnerApi({
   service: ownerService, auth: ownerAuth, sendJson, readBody, clientIp, agent: mainAgent, scheduler: ownerScheduler
 });
+// Agentlarni admin paneldan boshqarish: xuddi shu Owner API, lekin kirish — admin paroli (admin sessiyasi)
+adminAgentsApi = require('./owner').createOwnerApi({
+  service: ownerService,
+  auth: { enabled: adminApi.enabled, ownerOf: req => (adminApi.authed(req) ? { email: 'admin' } : null) },
+  sendJson, readBody, clientIp, agent: mainAgent, scheduler: ownerScheduler,
+  prefix: '/api/admin/agents', manageSession: false
+});
 ownerScheduler.start();
 
 // Admin panel alohida portda (asosiy: 3001). ADMIN_PORT=0 qilinsa — eski usulda sayt ichida: /admin
@@ -338,10 +349,19 @@ const ADMIN_SEPARATE = ADMIN_PORT > 0 && ADMIN_PORT !== PORT;
 const SITE_URL = 'http://localhost:' + PORT;
 const ADMIN_URL = ADMIN_SEPARATE ? 'http://localhost:' + ADMIN_PORT : SITE_URL + '/admin';
 
-const runAdmin = (req, res, pathname, url) => adminApi.handle(req, res, pathname, url, { siteUrl: SITE_URL }).catch(e => {
-  console.error('[admin] xato:', e.message);
-  sendJson(res, 500, { error: 'server' });
-});
+const runAdmin = (req, res, pathname, url) => {
+  if (pathname === '/api/admin/agents' || pathname.startsWith('/api/admin/agents/')) {
+    if (!adminApi.enabled) return sendJson(res, 503, { error: 'admin_disabled' });
+    return adminAgentsApi.handle(req, res, pathname, url).catch(e => {
+      console.error('[admin/agents] xato:', e.code || e.message);
+      sendJson(res, 500, { error: 'server' });
+    });
+  }
+  return adminApi.handle(req, res, pathname, url, { siteUrl: SITE_URL }).catch(e => {
+    console.error('[admin] xato:', e.message);
+    sendJson(res, 500, { error: 'server' });
+  });
+};
 const runBookings = (req, res, pathname, url) => bookingsApi.handle(req, res, pathname, url).catch(e => {
   console.error('[bookings] xato:', e.message);
   sendJson(res, 500, { error: 'server' });
@@ -454,6 +474,6 @@ if (adminServer) {
 }
 // To'xtatilganda baza to'g'ri yopiladi
 ['SIGINT', 'SIGTERM'].forEach(sig => process.on(sig, () => {
-  try { ownerScheduler.close(); ownerApi.close(); ownerAuth.close(); ownerDb.close(); db.close(); } catch (e) { /* yopilgan */ }
+  try { ownerScheduler.close(); ownerApi.close(); adminAgentsApi.close(); ownerAuth.close(); ownerDb.close(); db.close(); } catch (e) { /* yopilgan */ }
   process.exit(0);
 }));

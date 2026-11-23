@@ -107,6 +107,27 @@ code { font-size: 13px; background: #E9EDF3; padding: 1px 6px; border-radius: 6p
 .ad-cred dd { margin: 0; }
 .ad-cred code { font-size: 17px; background: transparent; padding: 0; user-select: all; }
 
+/* ---------- Agentlar ---------- */
+.ad-textarea { width: 100%; min-height: 84px; resize: vertical; font: inherit; line-height: 1.45; padding: 10px 12px; }
+.ad-ask { margin: 6px 0; padding-left: 20px; }
+.ad-details { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.ad-details summary { cursor: pointer; font-weight: 700; min-height: var(--tap); display: flex; align-items: center; }
+.ad-bar { display: block; width: 120px; max-width: 100%; height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.ad-bar i { display: block; height: 100%; background: var(--blue); border-radius: inherit; transition: width 0.3s; }
+.ad-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+.ad-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; }
+.ad-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.ad-list li.is-off b { color: var(--muted); font-weight: 600; }
+.ad-switch { position: relative; display: inline-flex; width: 44px; height: 26px; cursor: pointer; }
+.ad-switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.ad-switch span { flex: 1; border-radius: 999px; background: var(--line); transition: background 0.15s; position: relative; }
+.ad-switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.15s; }
+.ad-switch input:checked + span { background: var(--blue); }
+.ad-switch input:checked + span::after { transform: translateX(18px); }
+.ad-switch input:focus-visible + span { outline: 2px solid var(--blue); outline-offset: 2px; }
+.ad-switch input:disabled + span { opacity: 0.5; }
+@media (max-width: 760px) { .ad-two { grid-template-columns: 1fr; } .ad-bar { width: 100px; } }
+
 /* ---------- Xabar ---------- */
 .ad-toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; z-index: 50;
   max-width: calc(100vw - 32px); padding: 12px 18px; border-radius: 12px; background: var(--navy); color: #fff; font-weight: 600; font-size: 14px;

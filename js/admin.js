@@ -1,7 +1,9 @@
 /*
  * TezBooking — admin panel (admin.html).
  *
- * Bo'limlar:  Umumiy | Tur firmalar | To'lovlar | Tariflar | Bronlar   (manzil: /admin#agencies va h.k.)
+ * Bo'limlar:  Umumiy | Tur firmalar | To'lovlar | Tariflar | Bronlar | Agentlar   (manzil: /admin#agencies va h.k.)
+ *  - Agentlar:     Main Agent'ga topshiriq (oddiy matn yoki aniq parametrlar), vazifalar va natijalar, to'xtatish,
+ *                  operatorlarni yoqish/o'chirish, navbat sozlamalari, ogohlantirishlar, ishchilar jurnali (/api/admin/agents)
  *  - Tur firmalar: yangi firma (login + parol), parolni yangilash, bloklash, tarifni qo'lda berish
  *  - To'lovlar:    kutilayotgan to'lovlarni tasdiqlash yoki bekor qilish
  *  - Tariflar:     3 / 6 / 12 oylik narxlar
@@ -17,18 +19,40 @@
   const BY = { admin: 'admin', site: 'sayt', import: 'brauzerdan ko\'chirildi' };
   const PROVIDER = { demo: 'Demo', manual: 'Qo\'lda (bank / naqd)', payme: 'Payme', click: 'Click' };
   const PAY_STATUS = { pending: ['wait', 'Kutilmoqda'], paid: ['ok', 'To\'langan'], cancelled: ['off', 'Bekor qilingan'] };
-  const TABS = [['overview', 'Umumiy'], ['agencies', 'Tur firmalar'], ['payments', 'To\'lovlar'], ['tariffs', 'Tariflar'], ['bookings', 'Bronlar']];
+  const TABS = [['overview', 'Umumiy'], ['agencies', 'Tur firmalar'], ['payments', 'To\'lovlar'], ['tariffs', 'Tariflar'], ['bookings', 'Bronlar'], ['agents', 'Agentlar']];
   const ERR = {
     bad_login: 'Login 3–32 belgi bo\'lsin: lotin harflari, raqamlar, nuqta, chiziqcha.',
     login_taken: 'Bu login band. Boshqasini yozing.', bad_name: 'Firma nomini yozing.', bad_price: 'Narx noto\'g\'ri.',
-    no_change: 'Holat allaqachon o\'zgargan. Sahifa yangilandi.', bad_tariff: 'Tarif topilmadi yoki o\'chirilgan.'
+    no_change: 'Holat allaqachon o\'zgargan. Sahifa yangilandi.', bad_tariff: 'Tarif topilmadi yoki o\'chirilgan.',
+    // Agentlar
+    bad_search_parameters: 'Qidiruv ma\'lumotlarini tekshiring: davlat, sana, kechalar, kishilar.',
+    bad_command: 'Topshiriq matnini yozing.', bad_settings: 'Sozlamalar noto\'g\'ri (ruxsat etilgan oraliqdan tashqarida).',
+    bad_website: 'Operator ma\'lumotlari noto\'g\'ri (faqat HTTPS manzil).', invalid_task_transition: 'Bu vazifani endi bekor qilib bo\'lmaydi.',
+    idempotency_conflict: 'Bu topshiriq allaqachon yuborilgan.', origin_rejected: 'So\'rov rad etildi (boshqa manzildan).',
+    llm_key_missing: 'AI tahlilchi uchun serverda API kaliti yo\'q.', llm_provider_error: 'AI tahlilchi javob bermadi.', llm_timeout: 'AI tahlilchi javobi kechikdi.'
   };
+  // Agent vazifasi, operator integratsiyasi va ishchi holatlari: [rang klassi, matn]
+  const TASK_ST = {
+    queued: ['wait', 'Navbatda'], running: ['wait', 'Bajarilmoqda'], completed: ['ok', 'Yakunlandi'], partial: ['wait', 'Qisman bajarildi'],
+    failed: ['off', 'Xato'], cancelled: ['past', 'Bekor qilingan'], blocked: ['past', 'Mos operator yo\'q']
+  };
+  const INT_ST = { verified: ['ok', 'Tasdiqlangan'], pending: ['past', 'Ulanmagan'], failed: ['off', 'Xato'] };
+  const WORK_ST = { pending: ['past', 'O\'rnatilmagan'], idle: ['ok', 'Tayyor'], running: ['wait', 'Ishlamoqda'], paused: ['past', 'Pauza'], failed: ['off', 'Xato'] };
+  const ASK = {
+    destination: 'Qaysi shahar yoki kurort?', country: 'Qaysi davlat?', date: 'Uchish sanasi qachon? (masalan: 15-dekabr yoki 2026-12-15)',
+    adults: 'Necha katta kishi?', nights: 'Necha kecha?', childrenAges: 'Bolalar yoshi necha?',
+    departureAirport: 'Qayerdan uchiladi: Toshkent, Samarqand yoki Dushanbe?', budget: 'Byudjet qancha?', currency: 'Qaysi valyutada?',
+    mealPlan: 'Ovqatlanish turi (BB, HB, AI...)?', hotelStars: 'Mehmonxona necha yulduzli?'
+  };
+  const COUNTRY_OPTS = [['tr', 'Turkiya'], ['ae', 'BAA'], ['eg', 'Misr'], ['ge', 'Gruziya'], ['az', 'Ozarbayjon'], ['th', 'Tailand'],
+    ['vn', 'Vyetnam'], ['my', 'Malayziya'], ['lk', 'Shri-Lanka'], ['mv', 'Maldiv'], ['id', 'Indoneziya']];
 
   const state = {
     tab: 'overview', stats: null, bookings: [], agencies: [], payments: [], tariffs: [], today: '',
-    bq: '', bstatus: 'active', bproduct: '', aq: '', afilter: 'all', pfilter: 'pending', busy: false
+    bq: '', bstatus: 'active', bproduct: '', aq: '', afilter: 'all', pfilter: 'pending', busy: false,
+    ag: { data: null, error: '', draft: '', clarify: null, oq: '' }   // Agentlar bo'limi
   };
-  let es = null;
+  let es = null, agEs = null;
   let siteUrl = '/';                 // sayt manzili (admin alohida portda bo'lsa — http://localhost:3000)
 
   // ---------- Yordamchilar ----------
@@ -52,6 +76,17 @@
     if (!resp.ok) { const err = new Error(data.error || 'http_' + resp.status); err.status = resp.status; err.code = data.error; throw err; }
     return data;
   }
+  // Agentlar API'si (server/owner/index.js): admin sessiyasi bilan, GET / POST / PATCH
+  async function agentApi(path, method, body, headers) {
+    const opts = { cache: 'no-store', credentials: 'same-origin', method: method || 'GET', headers: Object.assign({}, headers || {}) };
+    if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    const resp = await fetch('/api/admin/agents' + path, opts);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) { const err = new Error(data.error || 'http_' + resp.status); err.status = resp.status; err.code = data.error; throw err; }
+    return data;
+  }
+  const uid = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID()
+    : Date.now().toString(16) + '-' + Math.random().toString(16).slice(2) + '-' + Math.random().toString(16).slice(2));
   // Amal: xato bo'lsa tushunarli xabar, sessiya tugagan bo'lsa — kirish ekrani
   async function act(fn) {
     try { return await fn(); }
@@ -69,6 +104,7 @@
   // ---------- Kirish va xabar ekranlari ----------
   function screen(title, text, form) {
     if (es) { es.close(); es = null; }
+    if (agEs) { agEs.close(); agEs = null; }
     root.innerHTML = `
 <main class="ad-center">
   <div class="card ad-login">
@@ -168,12 +204,17 @@
     const v = document.getElementById('view');
     const keepFocus = document.activeElement && document.activeElement.id;
     const caret = keepFocus && document.activeElement.selectionStart;
-    v.innerHTML = { overview: viewOverview, agencies: viewAgencies, payments: viewPayments, tariffs: viewTariffs, bookings: viewBookings }[state.tab]();
-    // Qidiruv maydonida yozish davom etsin
+    v.innerHTML = { overview: viewOverview, agencies: viewAgencies, payments: viewPayments, tariffs: viewTariffs, bookings: viewBookings, agents: viewAgents }[state.tab]();
+    // Qidiruv maydonida (va agent topshirig'ida) yozish davom etsin
     if (keepFocus) {
       const el = document.getElementById(keepFocus);
-      if (el && el.matches('input[type=search]')) { el.focus(); try { el.setSelectionRange(caret, caret); } catch (e) { /* yo'q */ } }
+      if (el && el.matches('input[type=search], #ag-cmd')) { el.focus(); try { el.setSelectionRange(caret, caret); } catch (e) { /* yo'q */ } }
     }
+  }
+  // Foydalanuvchi forma maydonini to'ldirayotgan bo'lsa, avtomatik yangilanish uni o'chirib yubormasin
+  function editing() {
+    const el = document.activeElement;
+    return !!(el && el.closest && el.closest('#view form') && el.matches('input:not([type=search]):not([type=checkbox]), select, textarea:not(#ag-cmd)'));
   }
 
   // ---------- Umumiy ----------
@@ -384,6 +425,162 @@
 </section>`;
   }
 
+  // ---------- Agentlar (Main Agent, navbat, ishchilar, operatorlar) ----------
+  const badge = (map, v) => { const s = map[v] || ['past', String(v || '—').replace(/_/g, ' ')]; return `<span class="ad-status ad-s-${s[0]}">${esc(s[1])}</span>`; };
+  function viewAgents() {
+    const g = state.ag;
+    if (!g.data) return g.error
+      ? `<section class="card ad-table-card"><h1 class="h2">Agentlar</h1><p class="muted">${esc(g.error)}</p></section>`
+      : '<p class="muted">Yuklanmoqda…</p>';
+    const d = g.data, ov = d.overview || {}, sites = ov.websites || {}, tk = ov.tasks || {};
+    const ast = d.main.agentStatus || {}, wc = d.main.workerCounts || {}, set = d.settings || {};
+    const tasks = d.tasks || [], openAlerts = (d.alerts || []).filter(a => a.status === 'open');
+    const oq = g.oq.trim().toLowerCase();
+    const sites2 = (d.websites || []).filter(s => !oq || (s.name + ' ' + s.url).toLowerCase().indexOf(oq) >= 0);
+    const minDate = state.today || new Date().toISOString().slice(0, 10);
+    return `
+<section aria-labelledby="h-agst">
+  <h1 id="h-agst" class="h2">Agentlar</h1>
+  <p class="hint ad-hint">Main Agent topshiriqni tahlil qiladi, navbatga qo'yadi va ulangan operatorlarning ishchilariga (worker) tarqatadi. Natijalar shu yerda solishtiriladi.</p>
+  ${tiles([
+    ['Main Agent', ast.parser === 'llm' ? 'AI' : 'Faol', ast.parser === 'llm' ? 'AI tahlilchi (' + (ast.llmProvider || 'llm') + ')' : 'qoidaviy tahlilchi'],
+    ['Ishchilar (adapter)', ast.adaptersRegistered || 0, (wc.running || 0) + ' tasi hozir ishlamoqda'],
+    ['Ulangan operatorlar', (sites.verified || 0) + ' / ' + (sites.configured || 0), (sites.enabled || 0) + ' tasi yoqilgan'],
+    ['Faol vazifalar', tk.active || 0, (tk.completed || 0) + ' yakunlangan · ' + (tk.failed || 0) + ' xato'],
+    ['Ogohlantirishlar', openAlerts.length, openAlerts.length ? 'ko\'rib chiqish kerak' : 'hammasi joyida']
+  ])}
+  ${!ast.adaptersRegistered ? '<div class="card ad-notice"><b>Hozircha birorta ishchi (adapter) o\'rnatilmagan.</b> Topshiriqlar saqlanadi, lekin operatorlarga yuborilmaydi ("Mos operator yo\'q"). Sinab ko\'rish uchun: <code>npm run demo</code> — taqlidiy ishchi bilan.</div>' : ''}
+</section>
+
+<section class="card ad-table-card" aria-labelledby="h-agcmd">
+  <h2 id="h-agcmd" class="h2">Agentga topshiriq</h2>
+  <p class="hint">Oddiy so'z bilan yozing (o'zbek, rus yoki ingliz tilida). Ma'lumot yetishmasa, agent aniqlashtiruvchi savol beradi.</p>
+  <form class="ad-form" data-form="agcmd">
+    <textarea id="ag-cmd" class="input ad-textarea" name="command" rows="3" maxlength="4000" required placeholder="Masalan: Antalyaga 15-dekabr 7 kecha 2 kishi hammasi kiritilgan 2000 dollargacha">${esc(g.draft)}</textarea>
+    <div class="btn-row"><button class="btn btn-dark" type="submit">Agentga yuborish</button></div>
+  </form>
+  ${g.clarify ? `<div class="card ad-notice"><b>Agent aniqlashtirishni so'radi:</b><ul class="ad-ask">${(g.clarify.missing || []).map(f => `<li>${esc(ASK[f] || f)}</li>`).join('')}</ul><span class="hint">Matnni to'ldirib, qayta yuboring.</span></div>` : ''}
+  <details class="ad-details">
+    <summary>Aniq parametrlar bilan topshiriq</summary>
+    <form class="ad-grid-form" data-form="agsearch" autocomplete="off">
+      <label><span class="label">Shahar / kurort *</span><input class="input input-sm" name="destination" required maxlength="120" placeholder="Antalya"></label>
+      <label><span class="label">Davlat *</span><select class="input input-sm" name="country" required><option value="">Tanlang</option>${COUNTRY_OPTS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+      <label><span class="label">Uchish sanasi *</span><input class="input input-sm" type="date" name="date" min="${esc(minDate)}" required></label>
+      <label><span class="label">Kechalar *</span><input class="input input-sm" type="number" name="nights" min="1" max="30" value="7" required></label>
+      <label><span class="label">Kattalar *</span><input class="input input-sm" type="number" name="adults" min="1" max="8" value="2" required></label>
+      <label><span class="label">Bolalar yoshi</span><input class="input input-sm" name="childrenAges" placeholder="masalan: 5, 9" pattern="\\s*(\\d{1,2}\\s*(,\\s*\\d{1,2}\\s*){0,3})?"></label>
+      <label><span class="label">Byudjet (jami)</span><input class="input input-sm" type="number" name="budget" min="1" placeholder="ixtiyoriy"></label>
+      <label><span class="label">Valyuta</span><select class="input input-sm" name="currency"><option>USD</option><option>EUR</option><option>UZS</option></select></label>
+      <label><span class="label">Qayerdan</span><select class="input input-sm" name="departureAirport"><option value="">Farqi yo'q</option><option value="tas">Toshkent</option><option value="skd">Samarqand</option><option value="dyu">Dushanbe</option></select></label>
+      <button class="btn btn-dark" type="submit">Navbatga qo'yish</button>
+    </form>
+  </details>
+</section>
+
+<section class="card ad-table-card" aria-labelledby="h-agtasks">
+  <div class="ad-toolbar"><h2 id="h-agtasks" class="h2">Vazifalar <span class="count">${tasks.length}</span></h2></div>
+  ${!tasks.length ? '<p class="ad-empty muted">Hali vazifalar yo\'q. Yuqorida agentga topshiriq bering.</p>' : `
+  <div class="ad-scroll"><table class="ad-table">
+    <thead><tr><th>Yaratilgan</th><th>Topshiriq</th><th>Holat</th><th>Jarayon</th><th class="num">Takliflar</th><th><span class="sr-only">Amallar</span></th></tr></thead>
+    <tbody>${tasks.map(t => {
+      const pct = Math.max(0, Math.min(100, t.progressPercent || 0));
+      const live = ['queued', 'running', 'blocked'].indexOf(t.status) >= 0;
+      return `
+      <tr class="${t.status === 'cancelled' ? 'is-off' : ''}">
+        <td data-th="Yaratilgan" class="nowrap">${esc(stamp(t.createdAt))}</td>
+        <td data-th="Topshiriq"><b>${esc(t.command || '—')}</b>${t.errorCode ? `<span class="hint ad-sub">${esc(t.errorCode)}</span>` : ''}</td>
+        <td data-th="Holat">${badge(TASK_ST, t.status)}</td>
+        <td data-th="Jarayon"><span class="ad-bar" title="${pct}%"><i style="width:${pct}%"></i></span><span class="hint ad-sub">${t.completedWorkers || 0}/${t.totalWorkers || 0} ishchi${t.failedWorkers ? ' · ' + t.failedWorkers + ' xato' : ''}</span></td>
+        <td data-th="Takliflar" class="num">${t.offersFound || 0}</td>
+        <td class="ad-actions">
+          <button type="button" class="btn btn-sm" data-do="agOffers" data-id="${esc(t.id)}">Natijalar</button>
+          ${live ? `<button type="button" class="btn btn-sm ad-danger" data-do="agCancel" data-id="${esc(t.id)}">To'xtatish</button>` : ''}
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`}
+</section>
+
+<section class="card ad-table-card" aria-labelledby="h-agops">
+  <div class="ad-toolbar">
+    <h2 id="h-agops" class="h2">Operatorlar <span class="count">${sites2.length}</span></h2>
+    <input id="ag-oq" class="input input-sm ad-search" type="search" placeholder="Qidirish: nomi, manzil…" value="${esc(g.oq)}" aria-label="Operatorlarni qidirish">
+    <button type="button" class="btn btn-sm" data-do="agAddSite">+ Operator qo'shish</button>
+  </div>
+  <p class="hint ad-hint">Agent faqat <b>yoqilgan</b>, <b>tasdiqlangan</b> va ishchisi o'rnatilgan operatorlarga topshiriq yuboradi.</p>
+  <div class="ad-scroll"><table class="ad-table">
+    <thead><tr><th>Operator</th><th>Integratsiya</th><th>Ishchi</th><th>Oxirgi muvaffaqiyatli qidiruv</th><th>Yoqilgan</th></tr></thead>
+    <tbody>${sites2.map(s => `
+      <tr class="${s.enabled ? '' : 'is-off'}">
+        <td data-th="Operator"><b>${esc(s.name)}</b><span class="hint ad-sub">${esc(s.url)}</span></td>
+        <td data-th="Integratsiya">${badge(INT_ST, s.integrationStatus)}</td>
+        <td data-th="Ishchi">${badge(WORK_ST, s.workerStatus)}</td>
+        <td data-th="Oxirgi qidiruv" class="nowrap">${esc(stamp(s.lastSuccessfulSearch))}</td>
+        <td data-th="Yoqilgan"><label class="ad-switch"><input type="checkbox" data-site="${esc(s.id)}"${s.enabled ? ' checked' : ''} aria-label="${esc(s.name)} yoqilgan"><span></span></label></td>
+      </tr>`).join('')}</tbody>
+  </table></div>
+</section>
+
+<div class="ad-two">
+  <section class="card ad-table-card" aria-labelledby="h-agset">
+    <h2 id="h-agset" class="h2">Sozlamalar</h2>
+    <p class="hint">Navbat cheklovlari — bir vaqtda nechta ishchi ishlaydi, qayta urinishlar va kutish vaqti.</p>
+    <form class="ad-grid-form" data-form="agsettings">
+      <label><span class="label">Jami parallel ishchilar</span><input class="input input-sm" type="number" name="workerConcurrency" min="1" max="50" value="${esc(set.worker_concurrency)}" required></label>
+      <label><span class="label">Bitta operatorga</span><input class="input input-sm" type="number" name="perOperatorConcurrency" min="1" max="10" value="${esc(set.per_operator_concurrency)}" required></label>
+      <label><span class="label">Qayta urinishlar</span><input class="input input-sm" type="number" name="retryLimit" min="0" max="5" value="${esc(set.retry_limit)}" required></label>
+      <label><span class="label">Kutish vaqti (soniya)</span><input class="input input-sm" type="number" name="searchTimeoutSeconds" min="5" max="300" value="${esc(set.search_timeout_seconds)}" required></label>
+      <label><span class="label">Saqlash muddati (kun)</span><input class="input input-sm" type="number" name="retentionDays" min="1" max="365" value="${esc(set.retention_days)}" required></label>
+      <button class="btn btn-dark" type="submit">Saqlash</button>
+    </form>
+  </section>
+  <section class="card ad-table-card" aria-labelledby="h-agal">
+    <h2 id="h-agal" class="h2">Ogohlantirishlar <span class="count">${openAlerts.length}</span></h2>
+    ${!(d.alerts || []).length ? '<p class="ad-empty muted">Ogohlantirishlar yo\'q.</p>' : `
+    <ul class="ad-list">${(d.alerts || []).slice(0, 20).map(a => `
+      <li class="${a.status === 'open' ? '' : 'is-off'}"><div><b>${esc(a.message)}</b><span class="hint ad-sub">${esc(String(a.type || '').replace(/_/g, ' '))} · ${esc(stamp(a.createdAt))}</span></div>
+        ${a.status === 'open' ? `<button type="button" class="btn btn-sm" data-do="agResolve" data-id="${esc(a.id)}">Hal qilindi</button>` : '<span class="ad-status ad-s-ok">Hal qilingan</span>'}</li>`).join('')}</ul>`}
+  </section>
+</div>
+
+<section class="card ad-table-card" aria-labelledby="h-aglog">
+  <h2 id="h-aglog" class="h2">Ishchilar jurnali</h2>
+  ${!(d.logs || []).length ? '<p class="ad-empty muted">Hali yozuvlar yo\'q — vazifa bajarilganda shu yerda ko\'rinadi.</p>' : `
+  <div class="ad-scroll"><table class="ad-table">
+    <thead><tr><th>Vaqt</th><th>Operator</th><th>Hodisa</th><th>Holat</th><th class="num">Urinish</th><th>Tafsilot</th></tr></thead>
+    <tbody>${d.logs.slice(0, 30).map(l => `
+      <tr>
+        <td data-th="Vaqt" class="nowrap">${esc(stamp(l.at))}</td>
+        <td data-th="Operator"><b>${esc(l.website)}</b></td>
+        <td data-th="Hodisa">${esc(String(l.eventType || 'status').replace(/_/g, ' '))}</td>
+        <td data-th="Holat">${badge(TASK_ST, l.status)}</td>
+        <td data-th="Urinish" class="num">${l.attempts || 0}</td>
+        <td data-th="Tafsilot">${esc(l.errorCode || '')}${l.message ? `<span class="hint ad-sub">${esc(l.message)}</span>` : ''}</td>
+      </tr>`).join('')}</tbody>
+  </table></div>`}
+</section>`;
+  }
+
+  async function showOffers(task) {
+    dialog(`<h2 id="dlg-title" class="h2">Natijalar</h2><p class="muted">${esc(task.command || '')}</p><p class="muted">Yuklanmoqda…</p>`);
+    const r = await act(() => agentApi('/searches/' + encodeURIComponent(task.id) + '/offers'));
+    if (!r) return;
+    const rows = [].concat(...(r.comparison || []).map(gr => (gr.offers || []).map(o => Object.assign({ identity: gr.identityVerified }, o))));
+    dialog(`
+      <div class="row-between"><h2 id="dlg-title" class="h2">Natijalar</h2><button type="button" class="btn btn-sm" data-close>Yopish</button></div>
+      <p class="muted">${esc(task.command || '')} · ${badge(TASK_ST, task.status)}</p>
+      ${!rows.length ? `<p class="muted">${task.status === 'blocked' ? 'Mos (yoqilgan va tasdiqlangan) operator ishchisi yo\'q — topshiriq hech qayerga yuborilmadi.' : 'Hali takliflar yo\'q.'}</p>` : `
+      <div class="ad-scroll"><table class="ad-table">
+        <thead><tr><th>Mehmonxona</th><th>Operator</th><th class="num">Narx</th><th>Mavjudlik</th><th>Tekshiruv</th></tr></thead>
+        <tbody>${rows.map(o => `<tr>
+          <td data-th="Mehmonxona"><b>${esc(o.hotelName)}</b></td>
+          <td data-th="Operator">${esc(o.operatorName)}</td>
+          <td data-th="Narx" class="num nowrap">${esc(group(o.totalPrice))} ${esc(o.currency)}</td>
+          <td data-th="Mavjudlik">${esc(o.availability)}</td>
+          <td data-th="Tekshiruv">${o.verificationStatus === 'verified' ? '<span class="ad-status ad-s-ok">Tasdiqlangan</span>' : '<span class="ad-status ad-s-past">Tasdiqlanmagan</span>'}</td></tr>`).join('')}</tbody>
+      </table></div>`}`);
+  }
+
   // ---------- Oyna va xabar ----------
   function dialog(html) {
     const dlg = document.getElementById('dlg');
@@ -463,6 +660,31 @@
     if (what === 'csv') return exportCsv();
     if (what === 'history' && booking) return showHistory(booking);
     if (what === 'editAgency' && agency) return editAgency(agency);
+    // Agentlar
+    const agTask = state.ag.data && (state.ag.data.tasks || []).find(t => t.id === id);
+    if (what === 'agOffers' && agTask) return showOffers(agTask);
+    if (what === 'agCancel' && agTask) {
+      if (!confirm('Vazifa to\'xtatilsinmi?\n' + (agTask.command || ''))) return;
+      btn.disabled = true;
+      const r = await act(() => agentApi('/searches/' + encodeURIComponent(id) + '/cancel', 'POST', {}));
+      btn.disabled = false;
+      if (r) { toast('Vazifa to\'xtatildi.'); loadAgents(); }
+      return;
+    }
+    if (what === 'agResolve') {
+      btn.disabled = true;
+      const r = await act(() => agentApi('/alerts/' + encodeURIComponent(id) + '/resolve', 'POST', {}));
+      btn.disabled = false;
+      if (r) loadAgents();
+      return;
+    }
+    if (what === 'agAddSite') {
+      const name = prompt('Operator nomi'); if (!name) return;
+      const url = prompt('Operator sayti (https://...)'); if (!url) return;
+      const r = await act(() => agentApi('/websites', 'POST', { name, url }));
+      if (r) { toast('Operator qo\'shildi (holati: ulanmagan).'); loadAgents(); }
+      return;
+    }
 
     let r = null;
     btn.disabled = true;
@@ -505,6 +727,17 @@
     if (el.id === 'aq') { state.aq = el.value; draw(); }
     if (el.id === 'bq') { state.bq = el.value; draw(); }
     if (el.id === 'bproduct' && e.type === 'change') { state.bproduct = el.value; draw(); }
+    if (el.id === 'ag-oq' && e.type === 'input') { state.ag.oq = el.value; draw(); }
+    if (el.id === 'ag-cmd') state.ag.draft = el.value;
+    // Operatorni yoqish / o'chirish
+    if (el.matches('input[data-site]') && e.type === 'change') {
+      const on = el.checked;
+      el.disabled = true;
+      act(() => agentApi('/websites/' + encodeURIComponent(el.dataset.site), 'PATCH', { enabled: on })).then(r => {
+        if (r) { toast((r.website ? r.website.name : 'Operator') + (on ? ' yoqildi.' : ' o\'chirildi.')); loadAgents(); }
+        else { el.checked = !on; el.disabled = false; }
+      });
+    }
   }
 
   async function onSubmit(e) {
@@ -537,8 +770,43 @@
       r = await act(() => api('/tariffs', { id: form.dataset.id, price: Number(data.price), active: !!data.active }));
       if (r) toast(tariffName(r.months) + ' tarif saqlandi.');
     }
+    // ---- Agentlar ----
+    if (kind === 'agcmd' || kind === 'agsearch' || kind === 'agsettings') {
+      let a = null;
+      if (kind === 'agcmd') {
+        a = await act(() => agentApi('/agent/searches', 'POST', { command: data.command }, { 'Idempotency-Key': uid() }));
+        if (a && a.status === 'needs_clarification') { state.ag.clarify = a; a = null; draw(); }
+        else if (a) { state.ag.clarify = null; state.ag.draft = ''; agentQueued(a); }
+      }
+      if (kind === 'agsearch') {
+        const ages = String(data.childrenAges || '').trim();
+        const parameters = {
+          destination: data.destination, country: data.country, date: data.date,
+          nights: Number(data.nights), adults: Number(data.adults),
+          childrenAges: ages ? ages.split(',').map(x => Number(x.trim())) : [],
+          budget: data.budget ? Number(data.budget) : null, currency: data.currency, departureAirport: data.departureAirport || null
+        };
+        a = await act(() => agentApi('/searches', 'POST', { parameters }, { 'Idempotency-Key': uid() }));
+        if (a) { form.reset(); agentQueued(a); }
+      }
+      if (kind === 'agsettings') {
+        const body = {};
+        Object.keys(data).forEach(k => { body[k] = Number(data[k]); });
+        a = await act(() => agentApi('/settings', 'POST', body));
+        if (a) toast('Sozlamalar saqlandi.');
+      }
+      if (submit) submit.disabled = false;
+      if (a) { if (document.activeElement) document.activeElement.blur(); loadAgents(); }
+      return;
+    }
     if (submit) submit.disabled = false;
     if (r) load();
+  }
+  function agentQueued(a) {
+    const t = a.task || {};
+    toast(a.duplicate ? 'Bu topshiriq avval yuborilgan.'
+      : t.status === 'blocked' ? 'Topshiriq saqlandi, lekin mos (ulangan) operator yo\'q.'
+        : 'Topshiriq navbatga qo\'yildi: ' + (a.selectedWorkers || t.totalWorkers || 0) + ' ta ishchi.', t.status === 'blocked');
   }
 
   // ---------- Ma'lumotlarni yuklash ----------
@@ -547,10 +815,44 @@
       const [stats, list, ag, pay, tar] = await Promise.all([api('/stats'), api('/bookings'), api('/agencies'), api('/payments'), api('/tariffs')]);
       state.stats = stats; state.bookings = list.bookings; state.today = list.today;
       state.agencies = ag.agencies; state.payments = pay.payments; state.tariffs = tar.tariffs;
-      draw();
+      if (state.tab === 'agents') return loadAgents();
+      if (!editing()) draw();
     } catch (err) {
       if (err.status === 401) showLogin('Sessiya tugadi, qayta kiring.');
     }
+  }
+  // Agentlar bo'limi ma'lumotlari (faqat shu bo'lim ochilganda yuklanadi)
+  let agLoading = null;
+  function loadAgents() {
+    if (agLoading) return agLoading;
+    agLoading = (async () => {
+      try {
+        const [overview, main, websites, searches, alerts, logs, settings] = await Promise.all([
+          agentApi('/overview'), agentApi('/main-agent'), agentApi('/websites'), agentApi('/searches?limit=50'),
+          agentApi('/alerts?limit=50'), agentApi('/logs?limit=50'), agentApi('/settings')]);
+        state.ag.data = { overview, main, websites: websites.websites, tasks: searches.tasks, alerts: alerts.alerts, logs: logs.logs, settings: settings.settings };
+        state.ag.error = '';
+        startAgentEvents();
+      } catch (err) {
+        if (err.status === 401) { showLogin('Sessiya tugadi, qayta kiring.'); return; }
+        state.ag.error = err.status === 404 || !err.status
+          ? 'Agentlar faqat server bilan ishlaydi: terminalda npm start (yoki npm run demo) ni ishga tushiring.'
+          : 'Agentlar ma\'lumotini yuklab bo\'lmadi: ' + (err.code || err.message);
+      } finally { agLoading = null; }
+      if (state.tab === 'agents' && document.getElementById('view') && !editing()) draw();
+    })();
+    return agLoading;
+  }
+  // Vazifa holati o'zgarganda (navbat, ishchi, natija) — darhol yangilanadi (SSE)
+  function startAgentEvents() {
+    if (agEs || typeof EventSource !== 'function') return;
+    let timer = 0;
+    agEs = new EventSource('/api/admin/agents/events');
+    agEs.addEventListener('update', () => {
+      if (state.tab !== 'agents') return;
+      clearTimeout(timer); timer = setTimeout(loadAgents, 300);
+    });
+    agEs.addEventListener('error', () => { if (agEs && agEs.readyState === 2) agEs = null; });
   }
   function setLive(on) {
     const el = document.getElementById('live'); if (!el) return;
@@ -560,7 +862,7 @@
   function route() {
     const h = location.hash.slice(1);
     state.tab = TABS.some(t => t[0] === h) ? h : 'overview';
-    if (document.getElementById('view')) draw();
+    if (document.getElementById('view')) { draw(); if (state.tab === 'agents') loadAgents(); }
   }
   window.addEventListener('hashchange', route);
 

@@ -18,12 +18,15 @@ const vm = require('vm');
 
 const ROOT = path.resolve(__dirname, '..');
 const DB_FILE = path.join(ROOT, 'data', 'demo.db');
+const OWNER_DB_FILE = path.join(ROOT, 'data', 'demo-owner.db');   // agentlar (Main Agent) uchun alohida demo baza
 const seed = require('../js/demo-seed.js');
 
 // Demo sozlamalari — server.js .env'dan o'qishidan oldin o'rnatiladi (.env ularni almashtirmaydi)
 process.env.PORT = process.env.DEMO_PORT || '3100';
 process.env.ADMIN_PORT = String(Number(process.env.PORT) + 1);
 process.env.DB_FILE = DB_FILE;
+process.env.OWNER_DB_FILE = OWNER_DB_FILE;
+process.env.TEZ_DEMO_AGENTS = '1';   // admin panel → Agentlar: taqlidiy ishchi (operator saytlariga so'rov yo'q)
 process.env.PAYMENT_MODE = 'demo';
 process.env.ADMIN_PASSWORD = seed.LOGINS.admin;
 
@@ -36,7 +39,7 @@ function loadTB() {
 }
 
 function fill(reset) {
-  if (reset) for (const f of [DB_FILE, DB_FILE + '-wal', DB_FILE + '-shm']) { try { fs.unlinkSync(f); } catch (e) { /* yo'q */ } }
+  if (reset) for (const f of [DB_FILE, DB_FILE + '-wal', DB_FILE + '-shm', OWNER_DB_FILE, OWNER_DB_FILE + '-wal', OWNER_DB_FILE + '-shm']) { try { fs.unlinkSync(f); } catch (e) { /* yo'q */ } }
   const db = require('./db').open(DB_FILE);          // jadvallar (migratsiyalar) yaratiladi
   const raw = db.raw;
   if (raw.prepare('SELECT COUNT(*) AS n FROM agencies').get().n > 0) { db.close(); return false; }
@@ -68,5 +71,5 @@ if (!fill(reset)) console.log("  Demo baza bor (qayta to'ldirish: npm run demo -
 console.log('');
 console.log('  ===== TezBooking DEMO =====');
 console.log('  Tur firma:  demo / demo12345 (tarif faol)   yangi / demo12345 (tarifsiz)');
-console.log('  Admin:      parol ' + seed.LOGINS.admin);
+console.log('  Admin:      parol ' + seed.LOGINS.admin + '   (agentlar: admin panel → Agentlar)');
 require('./server.js');
