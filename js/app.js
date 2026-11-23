@@ -24,6 +24,10 @@
   const OPS_SHORT = 8;                                 // filtrda dastlab ko'rinadigan operatorlar soni
   const MAX_ADULTS = 8, MAX_CHILDREN = 4, MAX_ROOMS = 4, ADULTS_PER_ROOM = 4;
   const DEFAULT_CHILD_AGE = 7;
+  const TOUR_PAGE = 30;                                // "Turlar bo'yicha": bir sahifada nechta tur
+  // Qidiruv yoki filtr o'zgarsa — turlar ro'yxati yana boshidan (birinchi sahifa) ko'rsatiladi
+  const LIST_KEYS = ['tab', 'dests', 'date', 'nights', 'from', 'adults', 'childAges', 'rooms', 'ops', 'stars', 'meals', 'cities',
+    'onlyAvail', 'instant', 'maxPrice', 'hotelQuery', 'sort', 'groupBy'];
   const ALL_IDS = D.COUNTRIES.map(c => c.id);
   const today = dt.localToday();
 
@@ -87,6 +91,10 @@
     mode: store.get('mode', 'net') === 'client' ? 'client' : 'net',
     cur: store.get('cur', 'USD') === 'UZS' ? 'UZS' : 'USD',
     open: {},                     // ochilgan mehmonxona kartalari
+    // Natijalar ko'rinishi: 'tour' — har bir tur alohida (narx bo'yicha), 'hotel' — mehmonxona bo'yicha guruhlangan
+    groupBy: store.get('groupBy', 'tour') === 'hotel' ? 'hotel' : 'tour',
+    tourLimit: TOUR_PAGE,         // "Turlar bo'yicha" ro'yxatida nechta ko'rsatiladi
+    detail: null, detailKey: null, // "Batafsil" oynasi: mehmonxona id va tanlangan taklif kaliti
     offer: Array.isArray(savedOffer) ? savedOffer.filter(validOffer) : [],
     panel: false, note: '', settings: false, cq: '', menuOpen: false, filtersOpen: false
   };
@@ -99,7 +107,9 @@
 
   function setState(patch) {
     if ('note' in patch && !('undo' in patch)) patch.undo = null;   // "Bekor qilish" faqat bron xabarida
+    if (!('tourLimit' in patch) && LIST_KEYS.some(k => k in patch)) patch.tourLimit = TOUR_PAGE;
     Object.assign(state, patch);
+    if ('groupBy' in patch) store.set('groupBy', state.groupBy);
     if ('lang' in patch) store.set('lang', state.lang);
     if ('cur' in patch) store.set('cur', state.cur);
     if ('mode' in patch) store.set('mode', state.mode);
@@ -167,6 +177,20 @@
   }
   const ratingWord = (r) => t(r >= 9 ? 'r_excellent' : r >= 8.5 ? 'r_vgood' : r >= 7.5 ? 'r_good' : 'r_fair');
   const isHotels = () => state.tab === 'hotels';
+  // Mehmonxona tafsilotlari (js/data.js → hotelInfo): kartadagi qisqa faktlar va "Batafsil" oynasi uchun
+  const FAC_TOP = ['beach', 'aqua', 'pool', 'spa', 'kids', 'anim', 'ipool', 'wifi'];   // kartada birinchi ko'rinadiganlar
+  const facName = (id) => t('fac_' + id);
+  function beachLabel(info) {
+    if (info.beach == null) return t('f_no_beach');
+    if (info.beach === 0) return t('f_beach_0');
+    return t(info.firstLine ? 'f_beach_first' : 'f_beach', { n: info.beach });
+  }
+  function hotelFacts(h) {
+    const info = D.hotelInfo(h);
+    if (!info) return [];
+    const top = FAC_TOP.filter(id => info.facilities.indexOf(id) >= 0).slice(0, 3).map(facName);
+    return [beachLabel(info), t('f_airport', { n: info.airport })].concat(top);
+  }
   // ---------- Rasmlar (images/ papkasi) ----------
   // Mehmonxonalar o'ylab topilgan, shuning uchun umumiy rasmlar: shahar mehmonxonasi yoki kurort (id bo'yicha tanlanadi)
   const CITY_HOTELS = ['tbilisi', 'baku', 'dubai', 'sharjah', 'kl', 'naftalan', 'gabala'];
@@ -541,7 +565,7 @@
         perPerson: children() ? guests + ' · ' + t('group_total') : guests + ' · ' + t('per_person', { p: money(Math.round(shown(best.price) / state.adults)) }),
         hasSave: r.live.length > 1 && dearLive.price > cheapLive.price,
         save: r.live.length > 1 ? money(shown(dearLive.price) - shown(cheapLive.price)) : '',
-        added: inOffer(best.key), open: !!state.open[h.id],
+        added: inOffer(best.key), open: !!state.open[h.id], facts: hotelFacts(h),
         pills: r.live.slice(0, 3).map((o, i) => ({ op: o.op.name, color: o.op.color, price: money(shown(o.price)), best: i === 0 })),
         more: r.live.length > 3 ? t('more_ops', { n: r.live.length - 3 }) : '',
         count: r.pass.length,
@@ -553,6 +577,80 @@
         }))
       };
     });
+
+    // "Turlar bo'yicha": har bir taklif (operator + mehmonxona + ovqat + xona + reys) — alohida tur, mehmonxonaga qaramay saralanadi
+    const allTours = [];
+    list.forEach(r => r.pass.forEach(o => allTours.push({ h: r.h, o })));
+    const tRank = (x) => (bookable(x.o) ? 0 : 1);
+    if (state.sort === 'rating') allTours.sort((a, b) => tRank(a) - tRank(b) || (b.h.rating - a.h.rating) || (a.o.price - b.o.price));
+    else if (state.sort === 'stars') allTours.sort((a, b) => tRank(a) - tRank(b) || (b.h.stars - a.h.stars) || (a.o.price - b.o.price));
+    else allTours.sort((a, b) => tRank(a) - tRank(b) || (a.o.price - b.o.price));
+    const tours = state.groupBy !== 'tour' ? [] : allTours.slice(0, state.tourLimit).map(({ h, o }) => ({
+      key: o.key, name: h.name, stars: h.stars, tint: D.byId[h.country].tint, photo: hotelPhoto(h), country: countryName(h.country),
+      place: cityName(h.city) + ', ' + countryName(h.country), dates: datesLabel + ' · ' + t('nights_n', { n: state.nights }),
+      rating: h.rating ? h.rating.toFixed(1) : '', ratingWord: h.rating ? ratingWord(h.rating) : '', live: !!h.live, tour: o.tour || '',
+      op: o.op.name, color: o.op.color, site: o.op.site,
+      meal: mealLong(o.meal), room: roomName(o.room), availCode: o.avail, avail: t('avail_' + o.avail),
+      seatsCode: o.seats, seats: t('th_seats') + ': ' + t('seats_' + o.seats), instant: o.instant,
+      price: money(shown(o.price)),
+      perPerson: children() ? guests + ' · ' + t('group_total') : guests + ' · ' + t('per_person', { p: money(Math.round(shown(o.price) / state.adults)) }),
+      canBook: bookable(o), bookLabel: bookable(o) ? actionLabel(o) : t('stop_btn'), added: inOffer(o.key), facts: hotelFacts(h)
+    }));
+
+    // "Batafsil" oynasi: tanlangan mehmonxona, uning tafsilotlari va barcha operatorlarning takliflari
+    let detail = null;
+    const dh = state.detail && D.HOTEL_BY_ID[state.detail];
+    if (dh) {
+      const dOffers = (offersByHotel[dh.id] || D.offersFor(dh, q, state.date)).slice()
+        .sort((a, b) => (bookable(a) ? 0 : 1) - (bookable(b) ? 0 : 1) || a.price - b.price);
+      dOffers.forEach(o => { if (!offerIndex[o.key]) offerIndex[o.key] = { h: dh, o }; });
+      const sel = dOffers.find(o => o.key === state.detailKey) || dOffers.find(bookable) || dOffers[0] || null;
+      const info = D.hotelInfo(dh);
+      const place = cityName(dh.city) + ', ' + countryName(dh.country);
+      const desc = [];
+      if (info) {
+        desc.push(t(info.resort ? 'd_desc_resort' : 'd_desc_city', { name: dh.name, place, s: dh.stars }));
+        desc.push(t('d_desc_built', { y: info.built, r: info.renovated, n: info.rooms }));
+        if (info.facilities.indexOf('kids') >= 0 && info.facilities.indexOf('anim') >= 0) desc.push(t('d_desc_family'));
+        else if (info.facilities.indexOf('spa') >= 0 && info.facilities.indexOf('gym') >= 0) desc.push(t('d_desc_spa'));
+      }
+      const ap = D.AIRPORTS[dh.country];
+      detail = {
+        id: dh.id, name: dh.name, stars: dh.stars, tint: D.byId[dh.country].tint, photo: hotelPhoto(dh), place, live: !!dh.live,
+        rating: dh.rating ? dh.rating.toFixed(1) : '', ratingWord: dh.rating ? ratingWord(dh.rating) : '',
+        dates: datesLabel + ' · ' + t('nights_n', { n: state.nights }) + ' · ' + guests,
+        desc, info,
+        chips: info ? [beachLabel(info), info.beachType ? t('f_beach_type', { x: t('bt_' + info.beachType) }) : '', t('f_airport', { n: info.airport }), t('f_center', { n: info.center })].filter(Boolean) : [],
+        stats: info ? [[t('f_built'), info.built], [t('f_renov'), info.renovated], [t('f_rooms'), info.rooms], [t('f_check'), t('f_check_v', { a: info.checkIn, b: info.checkOut })]] : [],
+        facilities: info ? info.facilities.map(facName) : [],
+        rooms: D.ROOMS.map(rm => {
+          const ops = {};
+          dOffers.forEach(o => { if (o.room === rm.id) ops[o.op.id] = true; });
+          const n = Object.keys(ops).length;
+          return { name: roomName(rm.id), size: info ? t('room_size', { n: info.roomSizes[rm.id] }) : '', ops: n ? t('room_ops', { n }) : t('room_none'), on: n > 0 };
+        }),
+        includes: !sel ? [] : (isHotels() ? [] : [t('inc_flight', { a: fromAirport(state.from), b: airportLabel(dh.country) }), t('inc_transfer')])
+          .concat([t('inc_hotel', { n: t('nights_n', { n: state.nights }) + ', ' + roomName(sel.room) }), t('inc_meal', { x: mealLong(sel.meal) })])
+          .concat(isHotels() ? [] : [t('inc_ins')]),
+        excludes: (isHotels() ? [t('exc_flight')] : [t('exc_visa')]).concat([t('exc_tax'), t('exc_extra')]),
+        flight: isHotels() || !ap ? null : [
+          [t('fl_route'), fromAirport(state.from) + ' → ' + airportLabel(dh.country)],
+          [t('fl_dates'), fmtDay(state.date) + ' – ' + fmtDay(dt.addDays(state.date, state.nights))],
+          [t('fl_time'), t('fl_time_v', { h: String(ap.hrs).replace('.', state.lang === 'en' ? '.' : ',') })],
+          [t('fl_type'), t('fl_type_v')]
+        ].concat(sel ? [[t('fl_seats'), t('seats_' + sel.seats)]] : []),
+        sel: sel ? { key: sel.key, op: sel.op.name, color: sel.op.color, site: sel.op.site, meal: mealLong(sel.meal), room: roomName(sel.room),
+          availCode: sel.avail, avail: t('avail_' + sel.avail), price: money(shown(sel.price)), canBook: bookable(sel), bookLabel: bookable(sel) ? actionLabel(sel) : t('stop_btn'),
+          added: inOffer(sel.key), tour: sel.tour || '',
+          perPerson: children() ? guests + ' · ' + t('group_total') : guests + ' · ' + t('per_person', { p: money(Math.round(shown(sel.price) / state.adults)) }) } : null,
+        offers: dOffers.map((o, i) => ({
+          key: o.key, op: o.op.name, color: o.op.color, site: o.op.site, meal: mealShort(o.meal) + ' (' + o.meal + ')', room: roomName(o.room),
+          availCode: o.avail, avail: t('avail_' + o.avail), seats: t('seats_' + o.seats),
+          confirm: o.instant ? t('conf_instant') : t('conf_hours'), price: money(shown(o.price)),
+          best: i === 0 && bookable(o), canBook: bookable(o), bookLabel: actionLabel(o, true), added: inOffer(o.key), selected: sel && o.key === sel.key
+        }))
+      };
+    }
 
     // "Qayerga" tugmalari: agentlik davlatlari, joriy filtrlar bo'yicha eng arzon narx
     const minFor = (cid) => {
@@ -659,8 +757,10 @@
 
     return {
       my, dests, multi, destChips, allDestsOn: dests.length === my.length,
-      regions, hot, days, ops, cityChecks, capMin, capMax, cap, active, hotels,
-      resultsTitle: (multi ? t('countries_n', { n: dests.length }) : destNames[0]) + ': ' + t('hotels_n', { n: hotels.length }),
+      regions, hot, days, ops, cityChecks, capMin, capMax, cap, active, hotels, tours, tourTotal: allTours.length, detail,
+      resultsTitle: (multi ? t('countries_n', { n: dests.length }) : destNames[0]) + ': ' + (state.groupBy === 'tour'
+        ? t(isHotels() ? 'variants_n' : 'tours_n', { n: allTours.length }) + ' · ' + t('hotels_n', { n: hotels.length })
+        : t('hotels_n', { n: hotels.length })),
       summary,
       live: liveMode ? liveStatus(dests, q) : null
     };
@@ -1095,9 +1195,10 @@
         ${h.rating ? `<span class="rating">${h.rating}</span><span class="small muted">${esc(h.ratingWord)}</span>` : ''}
         ${h.live ? `<span class="live-badge" title="${esc(t('live_badge_hint'))}"><span class="live-dot" aria-hidden="true"></span>${esc(t('live_badge'))}</span>` : ''}
       </div>
-      <h3>${esc(h.name)}</h3>
+      <h3><button type="button" class="h-link" data-action="detail" data-arg="${esc(h.bestKey)}" aria-label="${esc(t('details_aria', { h: h.name }))}">${esc(h.name)}</button></h3>
       <div class="place">${I.pin}<span>${esc(h.place)} · ${esc(h.dates)}</span></div>
       ${h.tour ? `<div class="xs muted live-tour">${esc(h.tour)}</div>` : ''}
+      ${viewFacts(h.facts)}
       <div class="pills">
         <span class="pill">${esc(h.meal)}</span>
         <span class="pill">${esc(h.room)}</span>
@@ -1120,10 +1221,133 @@
     <span class="small muted">${esc(t('op_prices'))}</span>
     ${h.pills.map(p => `<span class="op-pill${p.best ? ' best' : ''}"><span class="dot sm" style="background:${p.color}" aria-hidden="true"></span>${esc(p.op)} <strong>${esc(p.price)}</strong></span>`).join('')}
     ${h.more ? `<span class="small muted">${esc(h.more)}</span>` : ''}
-    <button type="button" class="btn-link ml-auto" data-action="open" data-arg="${h.id}" aria-expanded="${h.open}">${esc(h.open ? t('hide') : t('all_offers', { n: h.count }))}</button>
+    <button type="button" class="btn-link ml-auto" data-action="detail" data-arg="${esc(h.bestKey)}" aria-haspopup="dialog">${esc(t('details'))}</button>
+    <button type="button" class="btn-link" data-action="open" data-arg="${h.id}" aria-expanded="${h.open}">${esc(h.open ? t('hide') : t('all_offers', { n: h.count }))}</button>
   </div>
   ${offers}
 </article>`;
+  }
+
+  // Mehmonxona haqida qisqa faktlar (dengiz, aeroport, asosiy qulayliklar)
+  function viewFacts(facts) {
+    return facts && facts.length ? `<ul class="facts">${facts.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : '';
+  }
+
+  // "Turlar bo'yicha": bitta tur — bitta karta (operator, ovqat, xona, reysdagi joy, narx)
+  function viewTour(x) {
+    const hOnly = isHotels();
+    return `
+<article class="hotel tour-card" data-key="${esc(x.key)}">
+  <div class="hotel-main">
+    <div class="tile" style="background:${x.tint}" aria-hidden="true"><img src="${x.photo}" alt="" loading="lazy"><span>${esc(x.country)}</span></div>
+    <div class="hotel-info">
+      <div class="meta">
+        <span class="stars" role="img" aria-label="${esc(t('stars_aria', { n: x.stars }))}">${'★'.repeat(x.stars)}</span>
+        ${x.rating ? `<span class="rating">${x.rating}</span><span class="small muted">${esc(x.ratingWord)}</span>` : ''}
+        ${x.live ? `<span class="live-badge" title="${esc(t('live_badge_hint'))}"><span class="live-dot" aria-hidden="true"></span>${esc(t('live_badge'))}</span>` : ''}
+      </div>
+      <h3><button type="button" class="h-link" data-action="detail" data-arg="${esc(x.key)}" aria-label="${esc(t('details_aria', { h: x.name }))}">${esc(x.name)}</button></h3>
+      <div class="place">${I.pin}<span>${esc(x.place)} · ${esc(x.dates)}</span></div>
+      <div class="tour-op"><span class="dot sm" style="background:${x.color}" aria-hidden="true"></span><span class="muted">${esc(t('tour_op'))}:</span> <b>${esc(x.op)}</b>${x.site ? ` <a class="op-site sm" href="${esc(x.site)}" target="_blank" rel="noopener noreferrer" title="${esc(t('op_site', { op: x.op }))}" aria-label="${esc(t('op_site', { op: x.op }))}">${I.ext}</a>` : ''}</div>
+      ${x.tour ? `<div class="xs muted live-tour">${esc(x.tour)}</div>` : ''}
+      <div class="pills">
+        <span class="pill">${esc(x.meal)}</span>
+        <span class="pill">${esc(x.room)}</span>
+        <span class="pill av-${x.availCode}">${esc(x.avail)}</span>
+        ${hOnly ? '' : `<span class="pill${x.seatsCode === 'few' ? ' av-few' : ''}">${esc(x.seats)}</span>`}
+        ${x.instant ? `<span class="pill instant">${I.bolt}${esc(t('instant'))}</span>` : ''}
+      </div>
+      ${viewFacts(x.facts)}
+    </div>
+    <div class="price-box">
+      <span class="big-price">${esc(x.price)}</span>
+      <span class="xs muted">${esc(x.perPerson)}</span>
+      <div class="actions">
+        <button type="button" class="btn" data-action="book" data-arg="${esc(x.key)}"${x.canBook ? '' : ' disabled'}>${esc(x.bookLabel)}</button>
+        <button type="button" class="btn btn-accent btn-add" data-action="add" data-arg="${esc(x.key)}" aria-pressed="${x.added}"${x.canBook ? '' : ' disabled'}>${esc(x.added ? t('in_offer') : t('add_offer'))}</button>
+      </div>
+      <button type="button" class="btn-link" data-action="detail" data-arg="${esc(x.key)}" aria-haspopup="dialog">${esc(t('details'))} →</button>
+    </div>
+  </div>
+</article>`;
+  }
+
+  // "Batafsil" oynasi: mehmonxona tavsifi, qulayliklar, xonalar, narxga nima kiradi, reys va barcha operatorlar narxi
+  function viewDetail(d) {
+    const hOnly = isHotels();
+    const sec = (title, body) => body ? `<section class="dl-sec"><h3>${esc(title)}</h3>${body}</section>` : '';
+    const list = (items, cls) => items.length ? `<ul class="${cls}">${items.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '';
+    const s = d.sel;
+    return `
+<div class="modal-back" data-key="detail">
+  <div class="dl-card" role="dialog" aria-modal="true" aria-labelledby="h-detail">
+    <div class="dl-hero" style="background:${d.tint}">
+      <img src="${d.photo}" alt="" loading="lazy">
+      <button type="button" class="icon-btn dl-close" data-action="closeDetail" aria-label="${esc(t('hide'))}">${I.close}</button>
+      <div class="dl-hero-text">
+        <div class="meta">
+          <span class="stars" role="img" aria-label="${esc(t('stars_aria', { n: d.stars }))}">${'★'.repeat(d.stars)}</span>
+          ${d.rating ? `<span class="rating">${d.rating}</span><span class="small">${esc(d.ratingWord)}</span>` : ''}
+        </div>
+        <h2 id="h-detail" tabindex="-1">${esc(d.name)}</h2>
+        <div class="place">${I.pin}<span>${esc(d.place)}</span></div>
+      </div>
+    </div>
+    <div class="dl-body">
+      ${s ? `
+      <div class="dl-selected">
+        <div class="grow">
+          <span class="xs bold muted">${esc(t('d_selected'))}</span>
+          <div class="tour-op"><span class="dot sm" style="background:${s.color}" aria-hidden="true"></span><b>${esc(s.op)}</b> · ${esc(s.meal)} · ${esc(s.room)}</div>
+          <div class="xs muted">${esc(d.dates)}</div>
+          ${s.tour ? `<div class="xs muted">${esc(s.tour)}</div>` : ''}
+          <span class="pill av-${s.availCode}">${esc(s.avail)}</span>
+        </div>
+        <div class="price-box">
+          <span class="big-price">${esc(s.price)}</span>
+          <span class="xs muted">${esc(s.perPerson)}</span>
+          <div class="actions">
+            <button type="button" class="btn" data-action="book" data-arg="${esc(s.key)}"${s.canBook ? '' : ' disabled'}>${esc(s.bookLabel)}</button>
+            <button type="button" class="btn btn-accent btn-add" data-action="add" data-arg="${esc(s.key)}" aria-pressed="${s.added}"${s.canBook ? '' : ' disabled'}>${esc(s.added ? t('in_offer') : t('add_offer'))}</button>
+          </div>
+        </div>
+      </div>` : ''}
+      ${d.info ? sec(t('d_about'), `
+        ${d.desc.map(p => `<p>${esc(p)}</p>`).join('')}
+        ${list(d.chips, 'facts')}
+        <dl class="dl-stats">${d.stats.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`)
+        : `<p class="muted dl-live">${esc(t('d_live'))}${s && s.site ? ` <a href="${esc(s.site)}" target="_blank" rel="noopener noreferrer">${esc(t('d_op_site'))} ↗</a>` : ''}</p>`}
+      ${sec(t('d_facilities'), list(d.facilities, 'dl-fac'))}
+      ${d.info ? sec(t('d_rooms'), `<ul class="dl-rooms">${d.rooms.map(r => `<li class="${r.on ? '' : 'off'}"><b>${esc(r.name)}</b><span>${esc(r.size)}</span><span class="muted">${esc(r.ops)}</span></li>`).join('')}</ul>`) : ''}
+      ${s ? `<div class="dl-two">
+        ${sec(t('d_includes'), list(d.includes, 'dl-inc'))}
+        ${sec(t('d_excludes'), list(d.excludes, 'dl-exc'))}
+      </div>` : ''}
+      ${d.flight ? sec(t('d_flight'), `<dl class="dl-stats">${d.flight.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`) : ''}
+      ${d.offers.length ? sec(t('d_prices'), `
+      <div class="offers${hOnly ? ' no-flight' : ''}">
+        <div class="offers-inner">
+          <div class="orow head"><span>${esc(t('th_op'))}</span><span>${esc(t('th_meal'))}</span><span>${esc(t('th_room'))}</span><span>${esc(t('th_hotel'))}</span>${hOnly ? '' : `<span>${esc(t('th_seats'))}</span>`}<span>${esc(t('th_confirm'))}</span><span>${esc(t('th_price'))}</span><span></span></div>
+          ${d.offers.map(o => `
+          <div class="orow${o.best ? ' best' : ''}${o.selected ? ' sel' : ''}${o.canBook ? '' : ' stopped'}" data-key="${esc(o.key)}">
+            <span class="op"><span class="dot sm" style="background:${o.color}" aria-hidden="true"></span>${esc(o.op)}</span>
+            <span>${esc(o.meal)}</span>
+            <span>${esc(o.room)}</span>
+            <span><span class="pill av-${o.availCode}">${esc(o.avail)}</span></span>
+            ${hOnly ? '' : `<span>${esc(o.seats)}</span>`}
+            <span>${esc(o.confirm)}</span>
+            <span class="bold">${esc(o.price)}</span>
+            <span class="acts">
+              <button type="button" class="btn btn-sm" data-action="book" data-arg="${esc(o.key)}"${o.canBook ? '' : ' disabled'}>${esc(o.bookLabel)}</button>
+              <button type="button" class="btn btn-sm btn-add btn-add-sm" data-action="add" data-arg="${esc(o.key)}" aria-pressed="${o.added}"${o.canBook ? '' : ' disabled'}>${esc(o.added ? t('in_offer') : t('add_sm'))}</button>
+            </span>
+          </div>`).join('')}
+        </div>
+      </div>`) : ''}
+      ${d.info ? `<p class="xs muted dl-note">${esc(t('d_demo'))}</p>` : ''}
+    </div>
+  </div>
+</div>`;
   }
 
   function viewResults(vm) {
@@ -1136,6 +1360,7 @@
       <p>${esc(vm.summary)}</p>
     </div>
     <div class="seg-group">
+      <div class="seg seg-view" role="group" aria-label="${esc(t('group_label'))}">${seg('group', [{ id: 'tour', label: t(isHotels() ? 'group_tour_h' : 'group_tour') }, { id: 'hotel', label: t('group_hotel') }], state.groupBy)}</div>
       <div class="seg" role="group" aria-label="${esc(t('sort_label'))}">${seg('sort', [{ id: 'price', label: t('sort_price') }, { id: 'rating', label: t('sort_rating') }, { id: 'stars', label: t('sort_stars') }], state.sort)}</div>
       <div class="seg" role="group" aria-label="${esc(t('price_type'))}">${seg('mode', [{ id: 'net', label: t('mode_net') }, { id: 'client', label: t('mode_client', { m: MARKUP }) }], state.mode)}</div>
     </div>
@@ -1146,7 +1371,11 @@
     ${esc(vm.live.loading ? t('live_loading') : vm.live.failed && !vm.live.done ? t('live_failed') : t('live_note', { n: vm.live.ops }))}
   </p>` : `<p class="demo-note">${esc(t(isHotels() ? 'demo_note_h' : 'demo_note'))}</p>`}
   ${viewGate()}
-  ${vm.hotels.map(viewHotel).join('')}
+  ${state.groupBy === 'tour' ? vm.tours.map(viewTour).join('') + (vm.tourTotal > vm.tours.length ? `
+  <div class="more-row" data-key="more">
+    <span class="small muted">${esc(t('shown_of', { a: vm.tours.length, b: vm.tourTotal }))}</span>
+    <button type="button" class="btn" data-action="moreTours">${esc(t('show_more', { n: Math.min(TOUR_PAGE, vm.tourTotal - vm.tours.length) }))}</button>
+  </div>` : '') : vm.hotels.map(viewHotel).join('')}
   ${vm.hotels.length || (vm.live && vm.live.loading) ? '' : vm.live ? `
   <div class="empty" data-key="empty-live">
     <p class="bold" style="font-size:17px">${esc(t(isHotels() ? 'live_empty_title_h' : 'live_empty_title'))}</p>
@@ -1233,7 +1462,7 @@
       '<main class="container">' + viewSearch(vm) + viewHot(vm) + viewDays(vm) +
       `<div class="filters-bar"><button type="button" class="btn" data-action="filters" aria-expanded="${state.filtersOpen}" aria-controls="filters">${I.sliders}<span>${esc(t('filters_btn'))}</span>${vm.active ? `<span class="count">${vm.active}</span>` : ''}</button></div>` +
       '<div class="layout">' + viewFilters(vm) + viewResults(vm) + '</div></main>' +
-      viewDock(vm);
+      viewDock(vm) + (vm.detail ? viewDetail(vm.detail) : '');
   }
 
   // ---------- DOM'ni yangilash (morph) ----------
@@ -1313,6 +1542,7 @@
     lastVm = compute();
     tpl.innerHTML = view(lastVm);
     morphChildren(app, tpl);
+    document.documentElement.classList.toggle('modal-open', !!app.querySelector('.modal-back'));
     updateDockHeight();
     document.dispatchEvent(new CustomEvent('tez:render', { detail: { lang: state.lang } }));
     // Fokus: kerakli joyga qaytariladi (element olib tashlangan bo'lsa ham)
@@ -1373,6 +1603,7 @@
     setState({ adults, rooms, maxPrice: null, note });
   }
 
+  let detailReturn = null;         // "Batafsil" oynasi yopilganda fokus qaytadigan tugmaning kaliti
   const actions = {
     lang: (id) => setState({ lang: id }),
     cur: (id) => setState({ cur: id }),
@@ -1382,7 +1613,7 @@
       if (TABS.indexOf(id) < 0) return;
       if (id === state.tab) { setState({ menuOpen: false }); return; }
       pendingFocus = '#h-search';
-      setState({ tab: id, menuOpen: false, filtersOpen: false, settings: false, open: {}, maxPrice: null });
+      setState({ tab: id, menuOpen: false, filtersOpen: false, settings: false, open: {}, maxPrice: null, detail: null, detailKey: null });
       window.scrollTo(0, 0);
     },
     trip: (id) => setState({ trip: id === 'ow' ? 'ow' : 'rt' }),
@@ -1456,6 +1687,22 @@
     sort: (id) => setState({ sort: id }),
     mode: (id) => setState({ mode: id }),
     open: (hid) => setState({ open: Object.assign({}, state.open, { [hid]: !state.open[hid] }) }),
+    group: (id) => setState({ groupBy: id === 'hotel' ? 'hotel' : 'tour' }),
+    moreTours: () => setState({ tourLimit: state.tourLimit + TOUR_PAGE }),
+    // "Batafsil": taklif kaliti bo'yicha mehmonxona topiladi; oyna yopilganda fokus shu tugmaga qaytadi
+    detail: (key) => {
+      const x = offerIndex[key];
+      if (!x || !x.h) return;
+      detailReturn = key;
+      pendingFocus = '#h-detail';
+      setState({ detail: x.h.id, detailKey: key });
+    },
+    closeDetail: () => {
+      const esc2 = (s) => (window.CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/["\\]/g, '\\$&'));
+      if (detailReturn) pendingFocus = '[data-action="detail"][data-arg="' + esc2(detailReturn) + '"]';
+      detailReturn = null;
+      setState({ detail: null, detailKey: null });
+    },
     add: (key) => toggleOffer(key),
     // Kirish / tariflar oynasi (js/account.js)
     account: () => {
@@ -1552,6 +1799,8 @@
 
   // ---------- Hodisalar ----------
   app.addEventListener('click', (e) => {
+    // "Batafsil" oynasi: qora fon bosilsa — yopiladi
+    if (e.target.classList && e.target.classList.contains('modal-back')) { actions.closeDetail(); return; }
     const el = e.target.closest('[data-action]');
     if (!el || !app.contains(el) || el.disabled) return;
     const fn = actions[el.dataset.action];
@@ -1574,7 +1823,8 @@
   // Esc: ochiq oyna yoki panelni yopadi
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (state.settings) { pendingFocus = '[data-action="toggleSettings"]'; setState({ settings: false, cq: '' }); }
+    if (state.detail) actions.closeDetail();
+    else if (state.settings) { pendingFocus = '[data-action="toggleSettings"]'; setState({ settings: false, cq: '' }); }
     else if (state.panel && state.offer.length) { pendingFocus = '[data-action="panel"]'; setState({ panel: false }); }
     else if (state.menuOpen) { pendingFocus = '[data-action="menu"]'; setState({ menuOpen: false }); }
     else if (state.filtersOpen) { pendingFocus = '[data-action="filters"]'; setState({ filtersOpen: false }); }

@@ -219,6 +219,63 @@ legend { padding: 0; margin-bottom: 8px; font-weight: 700; font-size: 14px; }
 .orow.stopped { color: var(--muted); }
 .orow .op { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .orow .acts { display: flex; gap: 6px; justify-content: flex-end; }
+.orow.sel { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* ---------- Turlar bo'yicha ko'rinish va mehmonxona faktlari ---------- */
+.seg-view button[aria-pressed="true"] { background: var(--navy); color: #fff; }
+.h-link { border: 0; background: none; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.h-link:hover { color: var(--link); text-decoration: underline; text-underline-offset: 3px; }
+.tour-op { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; }
+.facts { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--muted); }
+.facts li { display: inline-flex; align-items: center; gap: 5px; }
+.facts li::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--teal); flex: 0 0 auto; }
+.tour-card .price-box .btn-link { margin-top: 2px; }
+.more-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; margin: 16px 0 4px; }
+
+/* ---------- "Batafsil" oynasi ---------- */
+html.modal-open { overflow: hidden; }
+.modal-back { position: fixed; inset: 0; z-index: 60; background: rgba(10, 25, 55, 0.55); display: flex; align-items: flex-start; justify-content: center;
+  padding: 32px 16px; overflow-y: auto; overscroll-behavior: contain; }
+.dl-card { width: 100%; max-width: 920px; background: #fff; border-radius: 20px; overflow: hidden; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.3); color: var(--navy); }
+.dl-hero { position: relative; height: 240px; display: flex; align-items: flex-end; color: #fff; }
+.dl-hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.dl-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10, 25, 55, 0.1) 30%, rgba(10, 25, 55, 0.85)); }
+.dl-hero-text { position: relative; z-index: 1; padding: 18px 22px; display: flex; flex-direction: column; gap: 6px; }
+.dl-hero h2 { margin: 0; font-family: var(--display); font-size: 26px; font-weight: 800; line-height: 1.2; outline: none; }
+.dl-hero .place { color: #E3EAF7; }
+.dl-hero .stars { color: #FFC266; }
+.dl-close { position: absolute; top: 12px; right: 12px; z-index: 2; background: rgba(255, 255, 255, 0.92); color: #0B2350; border-radius: 999px; }
+.dl-body { padding: 20px 22px 24px; display: flex; flex-direction: column; gap: 18px; }
+.dl-selected { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; padding: 14px 16px; border: 1px solid var(--accent); border-radius: 14px; background: #FFFBF3; }
+.dl-selected .grow { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; min-width: 220px; }
+.dl-selected .price-box { flex: 0 1 auto; }
+.dl-sec h3 { margin: 0 0 8px; font-family: var(--display); font-size: 17px; font-weight: 800; }
+.dl-sec p { margin: 0 0 6px; line-height: 1.5; }
+.dl-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin: 10px 0 0; }
+.dl-stats div { padding: 10px 12px; border-radius: 12px; background: var(--bg); }
+.dl-stats dt { font-size: 12px; font-weight: 700; color: var(--muted); }
+.dl-stats dd { margin: 2px 0 0; font-weight: 600; }
+.dl-fac { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.dl-fac li { font-size: 13px; font-weight: 600; padding: 5px 11px; border-radius: 999px; background: #E6F6F6; color: #0B5D5D; }
+.dl-rooms { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.dl-rooms li { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; font-size: 14px; }
+.dl-rooms li.off { opacity: 0.6; }
+.dl-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+.dl-inc, .dl-exc { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.dl-inc li::before { content: "✓"; color: #1B6B3A; font-weight: 800; margin-right: 8px; }
+.dl-exc li::before { content: "–"; color: var(--muted); font-weight: 800; margin-right: 8px; }
+.dl-sec .offers { border: 1px solid var(--line); border-radius: 12px; }
+.dl-note { margin: 0; }
+.dl-live { margin: 0; }
+@media (max-width: 760px) {
+  .modal-back { padding: 0; }
+  .dl-card { border-radius: 0; min-height: 100%; }
+  .dl-hero { height: 190px; }
+  .dl-hero h2 { font-size: 21px; }
+  .dl-body { padding: 16px; }
+  .dl-selected .price-box { align-items: flex-start; text-align: left; }
+  .dl-selected .actions { justify-content: flex-start; }
+}
 
 /* ---------- Aviachiptalar ---------- */
 .search .seg-group { margin-bottom: 4px; }
@@ -630,3 +687,12 @@ html.wp-lock { overflow: hidden; }
 @media (prefers-reduced-motion: no-preference) {
   body, .topbar, .card, .hotel, .chip, .day, .btn, .input, .panel { transition: background-color .25s ease, border-color .25s ease, color .25s ease; }
 }
+
+/* "Batafsil" oynasi va turlar ko'rinishi — qorong'i rejim */
+:root[data-theme="dark"] .dl-card { background: var(--surface); color: var(--navy); }
+:root[data-theme="dark"] :is(.dl-stats div, .dl-rooms li) { background: var(--surface-2); border-color: var(--line); }
+:root[data-theme="dark"] .dl-selected { background: #2A1F0C; }
+:root[data-theme="dark"] .dl-fac li { background: #0C2A30; color: #8FE3EC; }
+:root[data-theme="dark"] .dl-inc li::before { color: #6EDBA6; }
+:root[data-theme="dark"] .seg-view button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+:root[data-theme="dark"] .orow.sel { background: #2A1F0C; }

@@ -6,6 +6,10 @@ Sayt uch tilda ishlaydi: **o'zbekcha, ruscha, inglizcha** (yuqoridagi UZ / RU / 
 
 Uchta bo'lim (yuqori menyu):
 - **Turlar** — aviareys + mehmonxona, operatorlar narxlari yonma-yon.
+  Natijalar ikki ko'rinishda: **Turlar bo'yicha** (asosiy — har bir tur alohida: operator, ovqat, xona, reysdagi joy; narx bo'yicha,
+  30 tadan sahifalab) yoki **Mehmonxonalar bo'yicha** (guruhlangan). Kartada mehmonxona faktlari (dengiz, aeroport, asosiy qulayliklar),
+  **Batafsil** oynasida — tavsif, qulayliklar, xona turlari, narxga nima kiradi / kirmaydi, reys va barcha operatorlarning narxlari.
+  Demo mehmonxonalar tafsiloti `js/data.js` → `hotelInfo()` da yaratiladi; jonli (haqiqiy) mehmonxonalar uchun o'ylab topilmaydi.
 - **Mehmonxonalar** — faqat mehmonxona (aviareyssiz): xuddi shu qidiruv va filtrlar, narxda reys yo'q.
 - **Aviachiptalar** — borish-qaytish yoki bir tomonga, ekonom/biznes; aviakompaniya, to'g'ri reys va bagaj filtrlari,
   ±3 kunlik narx tasmasi. Demo reyslar `js/data.js` ichidagi `flightsFor()` da hisoblanadi.

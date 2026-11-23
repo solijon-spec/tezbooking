@@ -250,6 +250,45 @@
     }).filter(o => o.avail !== 'stop' && (q.noFlight || o.seats !== 'none') && !isGone(o.key));
   }
 
+  // ---------- Mehmonxona tafsilotlari (demo) ----------
+  // Mehmonxonalar o'ylab topilgan, shuning uchun tafsilotlar ham "urug'li" tasodifiy — har safar bir xil chiqadi.
+  // Haqiqiy versiyada bu ma'lumotlar operator / mehmonxona bazasidan (GIATA, operator kontenti) olinadi.
+  // Jonli (haqiqiy) mehmonxonalar uchun null — o'ylab topilgan tafsilot ko'rsatilmaydi.
+  const NO_BEACH = ['tbilisi', 'naftalan', 'gabala', 'kl', 'ubud'];        // dengiz yo'q
+  const CITY_SEA = ['baku', 'dubai', 'sharjah', 'pattaya', 'kuta', 'male']; // shahar, dengiz yaqin
+  const hotelInfoCache = {};
+  function hotelInfo(h) {
+    if (!h || h.live) return null;
+    if (hotelInfoCache[h.id]) return hotelInfoCache[h.id];
+    const r = (s) => rnd(h.id + 'i' + s);
+    const resort = NO_BEACH.indexOf(h.city) < 0 && CITY_SEA.indexOf(h.city) < 0;
+    const beach = NO_BEACH.indexOf(h.city) >= 0 ? null
+      : resort ? (r('b') < 0.45 ? 0 : 10 * Math.round((50 + r('bd') * (h.stars === 5 ? 250 : 650)) / 10))
+        : 50 * Math.round((300 + r('bd') * 1700) / 50);
+    const f = ['wifi', 'restaurant'];
+    const add = (id, p) => { if (r(id) < p) f.push(id); };
+    if (h.stars === 5) { f.push('pool', 'spa', 'gym', 'ala_carte', 'bar'); add('ipool', 0.7); add('kids', 0.8); add('anim', resort ? 0.85 : 0.3); add('aqua', resort ? 0.5 : 0.1); add('tennis', 0.5); }
+    else if (h.stars === 4) { f.push('bar'); add('pool', 0.9); add('spa', 0.55); add('gym', 0.6); add('kids', 0.55); add('anim', resort ? 0.6 : 0.15); add('aqua', resort ? 0.25 : 0); }
+    else { add('pool', resort ? 0.7 : 0.3); add('bar', 0.6); }
+    if (beach != null && beach <= 150 && (resort || r('pb') < 0.3)) f.push('beach');
+    add('parking', 0.7); add('conf', h.stars >= 4 && !resort ? 0.7 : 0.15);
+    const size = (base) => Math.round(base * (h.stars === 5 ? 1.35 : h.stars === 4 ? 1.1 : 0.9) * (0.9 + 0.2 * r('s' + base)));
+    const built = 1990 + Math.floor(r('y') * 30);
+    const info = {
+      resort, beach, firstLine: beach != null && beach <= 100 && resort,
+      beachType: beach == null ? null : ['sand', 'sand', 'pebble', 'mixed'][Math.floor(r('bt') * 4)],
+      airport: Math.round(8 + r('a') * (resort ? 55 : 25)),
+      center: resort ? Math.round(1 + r('c') * 14) : Math.round(r('c') * 50) / 10 + 0.3,
+      built, renovated: Math.min(2026, built + 4 + Math.floor(r('ry') * (2025 - built))),
+      rooms: Math.round((h.stars === 5 ? 220 : h.stars === 4 ? 140 : 60) * (0.6 + r('n') * 0.9)),
+      facilities: f,
+      roomSizes: { std: size(22), sup: size(28), dlx: size(36) },
+      checkIn: '14:00', checkOut: '12:00'
+    };
+    hotelInfoCache[h.id] = info;
+    return info;
+  }
+
   // ---------- Qaynoq taklif: keyingi 3 hafta ichidagi eng arzon tur (2 katta, 7 tun) ----------
   const hotCache = {};
   let hotStamp = '';
@@ -426,7 +465,7 @@
 
   global.TB = { OPS, COUNTRIES, REGIONS, HOTELS, HOTEL_BY_ID, FROM, MEALS, ROOMS, AIRLINES, AIRPORTS, byId, UZS_RATE, date,
     offersFor: (h, q, dateIso) => (h.live ? liveOffersFor(h, q, dateIso) : offersFor(h, q, dateIso)),
-    hotFor, flightsFor, isGone, setBooked, setClock: (fn) => { now = fn; },
+    hotFor, flightsFor, isGone, hotelInfo, setBooked, setClock: (fn) => { now = fn; },
     live: { set: setLive, entry: liveEntry, hotels: liveHotels, sig: liveSig,
       setFlights: setLiveFlights, flightEntry: liveFEntry, flights: liveFlights, fsig: liveFSig } };
 })(window);
