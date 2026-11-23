@@ -60,7 +60,11 @@
     local.forEach(es => es._emit('bookings', msg));
     if (chan) chan.postMessage(msg);
   }
-  if (chan) chan.onmessage = (e) => { mem = null; local.forEach(es => es._emit('bookings', e.data)); };
+  if (chan) chan.onmessage = (e) => {
+    mem = null;
+    if (e.data && e.data.reason === 'agents') local.filter(es => /\/api\/admin\/agents\/events/.test(es.url)).forEach(es => es._emit('update', e.data));
+    else local.forEach(es => es._emit('bookings', e.data));
+  };
 
   class DemoEventSource {
     constructor(url) {
@@ -74,7 +78,7 @@
     close() { this.readyState = 2; const i = local.indexOf(this); if (i >= 0) local.splice(i, 1); }
   }
   window.EventSource = function (url, opts) {
-    return /\/api\/events(\?|$)/.test(String(url)) ? new DemoEventSource(url) : new RealES(url, opts);
+    return /\/api\/(events|admin\/agents\/events)(\?|$)/.test(String(url)) ? new DemoEventSource(url) : new RealES(url, opts);
   };
 
   // ---------- Yordamchilar (server/*.js bilan bir xil ko'rinish) ----------
@@ -151,7 +155,7 @@
   const err = (status, code, extra) => json(status, Object.assign({ error: code }, extra || {}));
 
   // ---------- Marshrutlar ----------
-  async function route(method, path, search, body) {
+  async function route(method, path, search, body, hdr) {
     const d = load();
     const agency = (() => { const a = agencyById(sess.get('agency')); return a && a.status === 'active' ? a : null; })();
     const admin = sess.get('admin') === '1';
@@ -227,6 +231,7 @@
       if (r === '/logout') { sess.set('admin', null); return ok({ ok: true }); }
       if (r === '/me') return ok({ authed: admin, siteUrl: './' });
       if (!admin) return err(401, 'unauthorized');
+      if (r === '/agents' || r.startsWith('/agents/')) return agentsRoute(method, r.slice('/agents'.length), search, body, hdr || {});
       if (method === 'GET') {
         if (r === '/stats') return ok(stats());
         if (r === '/bookings') {
@@ -300,6 +305,279 @@
     return err(404, 'not_found');
   }
 
+  // ---------- Agentlar (admin panel → Agentlar): Main Agent, navbat va ishchilar taqlidi ----------
+  // Server: server/owner/*. Bu yerda ishchilar operator saytlariga bormaydi — takliflar saytning demo narx
+  // generatoridan (js/data.js, TB.offersFor) olinadi. Holat vaqtga qarab hisoblanadi: sahifa yangilansa ham
+  // vazifa "bajarilishda" davom etadi.
+  const AG_SITES = [   // [id, nomi, sayt, js/data.js dagi operator id, demo ishchi bormi]
+    ['aqua', 'Aqua Travel', 'https://agency.aqua-travelgroup.com/tour-package', 'aqua', 0],
+    ['asialuxe', 'Asialuxe', 'https://b2b.asialuxe.uz/login', 'asialuxe', 0],
+    ['crystalbay', 'Crystal Bay', 'https://booking.crystalbay.com/search_tour', 'crystalbay', 0],
+    ['kompas', 'Kompas Tour', 'https://online.uz.kompastour.com/search_tour', 'kompas', 1],
+    ['prestige', 'Prestige', 'http://online.uz-prestige.com/', 'prestige', 1],
+    ['pegas', 'Pegas', 'https://uz.pegast.asia/PackageSearch', 'pegas', 0],
+    ['vietra', 'Vietra Tour', 'https://b2b.vietratour.com/', 'vietratour', 0],
+    ['fstravel', 'FS Travel', 'https://b2b.fstravel.asia/menu?samo_action=logon', 'fstravel', 1],
+    ['kazunion', 'Kazunion', 'https://online.kazunion.com/', 'kazunion', 1],
+    ['kazunion-uae', 'Kazunion UAE', 'https://uae.kazunion.com', 'kazunionae', 0],
+    ['centrum', 'Centrum Holidays', 'https://online.centrum-holidays.com/search_tour', 'centrum', 0],
+    ['flykhiva', 'Fly Khiva', 'https://b2b.flykhiva.travel/search_tour', 'flykhiva', 1],
+    ['easybooking', 'Easybooking', 'https://tours.easybooking.uz/search_tour', 'easybooking', 1],
+    ['selfie', 'Selfie Travel', 'http://b2b.selfietravel.kz/search_tour', 'selfie', 1],
+    ['velikolepniy-vek', 'Velikolepniy Vek', 'https://velikolepniy-vek.com/login', 'vek', 0],
+    ['rezlive', 'Rezlive', 'https://www.rezlive.com', 'rezlive', 0],
+    ['savtour', 'Savtour', 'https://online.savtour.az/search_tour', 'savtour', 1],
+    ['mir-jahon', 'Mir Jahon', 'https://online.mir-jahon.uz', 'mirjahon', 0],
+    ['malva', 'Malva Tour', 'https://malvatouroperator.uz/search_tour', 'malva', 1]
+  ];
+  const AG_LIMITS = { workerConcurrency: [1, 50, 'worker_concurrency'], perOperatorConcurrency: [1, 10, 'per_operator_concurrency'],
+    retryLimit: [0, 5, 'retry_limit'], searchTimeoutSeconds: [5, 300, 'search_timeout_seconds'], retentionDays: [1, 365, 'retention_days'] };
+  const agentEs = () => local.filter(es => /\/api\/admin\/agents\/events/.test(es.url));
+  function agentNotify() {
+    agentEs().forEach(es => es._emit('update', { type: 'update', at: Date.now() }));
+    if (chan) chan.postMessage({ v: version, reason: 'agents' });
+  }
+  function agents() {
+    const d = load();
+    if (!d.agents) {
+      const now = Date.now();
+      d.agents = {
+        sites: AG_SITES.map(([id, name, url, op, worker]) => ({ id, name, url, op, worker: !!worker, enabled: !!worker,
+          integrationStatus: worker ? 'verified' : 'pending', createdAt: now })),
+        settings: { worker_concurrency: 3, per_operator_concurrency: 1, retry_limit: 2, search_timeout_seconds: 45, retention_days: 90 },
+        tasks: [], alerts: [], idem: {}
+      };
+      save();
+    }
+    return d.agents;
+  }
+  const opOf = (site) => (window.TB.OPS || []).find(o => o.id === site.op);
+  // Ishchining shu yo'nalishni sotishi: js/data.js dagi operator cheklovlari (countries, hotelOnly)
+  const supports = (site, p) => { const o = opOf(site); return !!o && !o.hotelOnly && (!o.countries || o.countries.indexOf(p.country) >= 0); };
+  const hrnd = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; };
+
+  function validParams(p) {
+    if (!p || typeof p !== 'object') return null;
+    const country = window.TezAgentParser ? window.TezAgentParser.countryCode(p.country) : p.country;
+    const ages = Array.isArray(p.childrenAges) ? p.childrenAges : [];
+    const ok = typeof p.destination === 'string' && p.destination.trim() && p.destination.length <= 120 && window.TB.byId[country] &&
+      window.TB.date.isValid(p.date) && p.date >= today() && p.date <= window.TB.date.addDays(today(), 365) &&
+      Number.isInteger(p.nights) && p.nights >= 1 && p.nights <= 30 && Number.isInteger(p.adults) && p.adults >= 1 && p.adults <= 8 &&
+      ages.length <= 4 && ages.every(a => Number.isInteger(a) && a >= 0 && a <= 17) &&
+      (p.budget == null || (Number.isFinite(p.budget) && p.budget > 0)) && (p.currency == null || ['USD', 'EUR', 'UZS'].includes(String(p.currency).toUpperCase())) &&
+      (p.departureAirport == null || ['tas', 'skd', 'dyu'].includes(p.departureAirport));
+    return ok ? { destination: p.destination.trim(), country, date: p.date, nights: p.nights, adults: p.adults, childrenAges: ages,
+      budget: p.budget == null ? null : p.budget, currency: String(p.currency || 'USD').toUpperCase(), mealPlan: p.mealPlan || null,
+      departureAirport: p.departureAirport || null } : null;
+  }
+  const ASK_FIELDS = ['destination', 'country', 'date', 'adults', 'nights', 'childrenAges'];
+  function missingOf(p, suggested) {
+    const m = new Set(suggested || []);
+    if (!p.destination) m.add('destination');
+    if (!p.country || !window.TB.byId[p.country]) m.add('country');
+    if (!p.date || !window.TB.date.isValid(p.date) || p.date < today()) m.add('date');
+    if (!Number.isInteger(p.adults) || p.adults < 1 || p.adults > 8) m.add('adults');
+    if (!Number.isInteger(p.nights) || p.nights < 1 || p.nights > 30) m.add('nights');
+    return ASK_FIELDS.filter(f => m.has(f));
+  }
+
+  // Ishchi natijasi: shu operatorning shu yo'nalishdagi demo takliflari (eng arzon 8 tasi)
+  function workerOffers(site, p) {
+    const TB = window.TB, o = opOf(site);
+    const city = p.destination.toLowerCase().replace(/[^a-z]/g, '');
+    let hotels = TB.HOTELS.filter(h => h.country === p.country);
+    const inCity = hotels.filter(h => city.indexOf(h.city) === 0 || h.city.indexOf(city) === 0);
+    if (inCity.length) hotels = inCity;
+    const q = { from: p.departureAirport || 'tas', nights: p.nights, adults: p.adults, childAges: p.childrenAges, rooms: 1 };
+    const rate = p.currency === 'UZS' ? TB.UZS_RATE : p.currency === 'EUR' ? 0.92 : 1;
+    const list = [];
+    hotels.forEach(h => TB.offersFor(h, q, p.date).forEach(x => {
+      if (x.op.id !== o.id) return;
+      const total = Math.round(x.price * rate);
+      if (p.budget && total > p.budget) return;
+      if (p.mealPlan && x.meal !== p.mealPlan) return;
+      list.push({ hotelName: h.name + ' ' + '★'.repeat(h.stars), operatorName: site.name, totalPrice: total, currency: p.currency,
+        mealPlan: x.meal, availability: x.avail === 'ok' ? 'available' : x.avail === 'few' ? 'few_left' : 'on_request',
+        verificationStatus: 'verified', hotelKey: h.id });
+    }));
+    return list.sort((a, b) => a.totalPrice - b.totalPrice).slice(0, 8);
+  }
+
+  function createTask(params, command, idemKey) {
+    const ag = agents();
+    if (idemKey && ag.idem[idemKey]) { const t = ag.tasks.find(x => x.id === ag.idem[idemKey]); if (t) return { task: taskView(t), duplicate: true }; }
+    const now = Date.now();
+    const chosen = ag.sites.filter(s => s.enabled && s.integrationStatus === 'verified' && s.worker && supports(s, params));
+    const conc = Math.max(1, ag.settings.worker_concurrency);
+    const id = 'task-' + now.toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    const t = { id, command: command || params.destination + ', ' + params.nights + ' kecha, ' + params.adults + ' kishi, ' + params.date,
+      parameters: params, createdAt: now, cancelledAt: null, workers: [] };
+    // Ishchilar navbat bilan: bir vaqtda ko'pi bilan worker_concurrency tasi; ~10 % — kutish vaqti tugashi (xato)
+    let slots = new Array(conc).fill(now + 500);
+    chosen.forEach(s => {
+      slots.sort((a, b) => a - b);
+      const start = slots[0], dur = 900 + Math.round(hrnd(id + s.id) * 2200);
+      const failed = hrnd(id + s.id + 'f') < 0.1;
+      slots[0] = start + dur;
+      t.workers.push({ site: s.id, name: s.name, start, end: start + dur, failed, offers: failed ? [] : workerOffers(s, params) });
+    });
+    ag.tasks.unshift(t);
+    ag.tasks = ag.tasks.slice(0, 50);
+    if (idemKey) ag.idem[idemKey] = id;
+    t.workers.filter(w => w.failed).forEach(w => ag.alerts.unshift({ id: 'al-' + id + '-' + w.site, type: 'worker_timeout',
+      message: w.name + ': ishchi javob bermadi (kutish vaqti tugadi)', createdAt: w.end, status: 'open', taskId: id }));
+    save();
+    scheduleTask(t);
+    agentNotify();
+    return { task: taskView(t), selectedWorkers: chosen.length };
+  }
+  function scheduleTask(t) {
+    const now = Date.now();
+    [...new Set([].concat(...t.workers.map(w => [w.start, w.end])))].filter(x => x > now)
+      .forEach(x => setTimeout(agentNotify, x - now + 30));
+  }
+  function workerState(t, w, now) {
+    if (t.cancelledAt && t.cancelledAt < w.end) return 'cancelled';
+    if (now < w.start) return 'queued';
+    if (now < w.end) return 'running';
+    return w.failed ? 'failed' : 'completed';
+  }
+  function taskView(t) {
+    const now = Date.now(), st = t.workers.map(w => workerState(t, w, now));
+    const done = st.filter(s => s === 'completed').length, failed = st.filter(s => s === 'failed').length;
+    const fin = st.filter(s => s !== 'queued' && s !== 'running').length;
+    let status;
+    if (!t.workers.length) status = 'blocked';
+    else if (t.cancelledAt && st.some(s => s === 'cancelled')) status = 'cancelled';
+    else if (st.some(s => s === 'running')) status = 'running';
+    else if (st.some(s => s === 'queued')) status = now < t.workers[0].start ? 'queued' : 'running';
+    else status = failed === st.length ? 'failed' : failed ? 'partial' : 'completed';
+    const offers = t.workers.reduce((n, w, i) => n + (st[i] === 'completed' ? w.offers.length : 0), 0);
+    return { id: t.id, command: t.command, parameters: t.parameters, status, createdAt: t.createdAt,
+      totalWorkers: t.workers.length, completedWorkers: done, failedWorkers: failed,
+      progressPercent: t.workers.length ? Math.round(fin / t.workers.length * 100) : 0, offersFound: offers,
+      errorCode: !t.workers.length ? 'no_verified_adapters' : null };
+  }
+  function siteView(s, tasks, now) {
+    const running = tasks.some(t => t.workers.some(w => w.site === s.id && workerState(t, w, now) === 'running'));
+    const last = Math.max(0, ...[].concat(...tasks.map(t => t.workers.filter(w => w.site === s.id && workerState(t, w, now) === 'completed').map(w => w.end))));
+    return { id: s.id, name: s.name, url: s.url, enabled: s.enabled, integrationStatus: s.integrationStatus,
+      workerStatus: !s.worker ? 'pending' : running ? 'running' : 'idle', lastSuccessfulSearch: last || null };
+  }
+
+  function agentsRoute(method, r, search, body, hdr) {
+    const ag = agents(), now = Date.now();
+    const limit = Math.max(1, Math.min(100, parseInt(search.get('limit'), 10) || 50));
+    const views = () => ag.tasks.map(taskView);
+    if (method === 'GET') {
+      if (r === '/overview') {
+        const v = views();
+        const doneT = ag.tasks.filter((t, i) => ['completed', 'partial'].includes(v[i].status) && t.workers.length);
+        return ok({
+          websites: { configured: ag.sites.length, enabled: ag.sites.filter(s => s.enabled).length, verified: ag.sites.filter(s => s.integrationStatus === 'verified').length,
+            pending: ag.sites.filter(s => s.integrationStatus === 'pending').length, running: 0, failed: 0 },
+          tasks: { active: v.filter(t => ['queued', 'running'].includes(t.status)).length, completed: v.filter(t => t.status === 'completed').length,
+            partial: v.filter(t => t.status === 'partial').length, failed: v.filter(t => t.status === 'failed').length,
+            averageCompletionMs: doneT.length ? Math.round(doneT.reduce((s, t) => s + Math.max(...t.workers.map(w => w.end)) - t.createdAt, 0) / doneT.length) : null },
+          openAlerts: ag.alerts.filter(a => a.status === 'open' && a.createdAt <= now).length, runtime: {}
+        });
+      }
+      if (r === '/main-agent') {
+        const st = [].concat(...ag.tasks.map(t => t.workers.map(w => workerState(t, w, now))));
+        const v = views();
+        return ok({ workerCounts: { running: st.filter(s => s === 'running').length, blocked: v.filter(t => t.status === 'blocked').length,
+          completed: st.filter(s => s === 'completed').length }, latestTask: v[0] || null, browserWorkers: 'demo_simulated',
+        agentStatus: { parser: 'deterministic', llmEnabled: false, llmProvider: null, llmConfigurationError: null,
+          adaptersRegistered: ag.sites.filter(s => s.worker).length } });
+      }
+      if (r === '/websites') return ok({ websites: ag.sites.map(s => siteView(s, ag.tasks, now)) });
+      if (r === '/searches') return ok({ tasks: views().slice(0, limit) });
+      if (r === '/alerts') return ok({ alerts: ag.alerts.filter(a => a.createdAt <= now).slice(0, limit) });
+      if (r === '/activities') return ok({ activities: [] });
+      if (r === '/settings') return ok({ settings: ag.settings });
+      if (r === '/logs') {
+        const logs = [].concat(...ag.tasks.map(t => t.workers.map(w => ({ t, w, s: workerState(t, w, now) }))))
+          .filter(x => ['completed', 'failed'].includes(x.s))
+          .map(x => ({ website: x.w.name, eventType: x.s === 'failed' ? 'worker_failed' : 'worker_completed', at: x.w.end, status: x.s, attempts: x.w.failed ? ag.settings.retry_limit + 1 : 1,
+            errorCode: x.w.failed ? 'worker_timeout' : null, message: x.w.failed ? 'Javob kutish vaqti tugadi' : x.w.offers.length + ' ta taklif · ' + x.t.parameters.destination }))
+          .sort((a, b) => b.at - a.at);
+        return ok({ logs: logs.slice(0, limit) });
+      }
+      let m = r.match(/^\/searches\/([\w-]+)$/);
+      if (m) { const t = ag.tasks.find(x => x.id === m[1]); return t ? ok({ task: taskView(t) }) : err(404, 'not_found'); }
+      m = r.match(/^\/searches\/([\w-]+)\/offers$/);
+      if (m) {
+        const t = ag.tasks.find(x => x.id === m[1]); if (!t) return err(404, 'not_found');
+        const offers = [].concat(...t.workers.filter(w => workerState(t, w, now) === 'completed').map(w => w.offers));
+        const groups = {};
+        offers.forEach(o => { (groups[o.hotelKey] = groups[o.hotelKey] || []).push(o); });
+        const comparison = Object.keys(groups).map(k => ({ identityVerified: true, offers: groups[k].sort((a, b) => a.totalPrice - b.totalPrice) }))
+          .sort((a, b) => a.offers[0].totalPrice - b.offers[0].totalPrice);
+        return ok({ offers, comparison });
+      }
+      return err(404, 'not_found');
+    }
+    if (!body) return err(400, 'bad_request');
+    if (r === '/agent/searches' && method === 'POST') {
+      const P = window.TezAgentParser;
+      if (!P) return err(503, 'agent_not_configured');
+      if (typeof body.command !== 'string' || !body.command.trim() || body.command.length > 4000) return err(400, 'bad_command');
+      const res = P.parseNaturalLanguage(body.command.trim());
+      const p = res.parameters;
+      const missing = missingOf(p, res.missing);
+      const params = !missing.length && validParams(p);
+      if (!params) return ok({ status: 'needs_clarification', parserMode: 'deterministic', parameters: p, missing: missing.length ? missing : ['date'] });
+      const out = createTask(params, body.command.trim(), hdr['idempotency-key']);
+      return json(out.duplicate ? 200 : 201, Object.assign(out, { status: 'task_created', parserMode: 'deterministic' }));
+    }
+    if (r === '/searches' && method === 'POST') {
+      const params = validParams(body.parameters);
+      if (!params) return err(400, 'bad_search_parameters');
+      const out = createTask(params, '', hdr['idempotency-key']);
+      return json(out.duplicate ? 200 : 201, out);
+    }
+    let m = r.match(/^\/searches\/([\w-]+)\/cancel$/);
+    if (m && method === 'POST') {
+      const t = ag.tasks.find(x => x.id === m[1]);
+      if (!t || !['queued', 'running', 'blocked'].includes(taskView(t).status)) return err(409, 'invalid_task_transition');
+      t.cancelledAt = now; save(); agentNotify();
+      return ok({ task: taskView(t) });
+    }
+    m = r.match(/^\/alerts\/([\w-]+)\/resolve$/);
+    if (m && method === 'POST') {
+      const a = ag.alerts.find(x => x.id === m[1]); if (!a) return err(404, 'not_found');
+      a.status = 'resolved'; save(); agentNotify(); return ok({ ok: true });
+    }
+    if (r === '/settings' && method === 'POST') {
+      const next = Object.assign({}, ag.settings);
+      for (const k of Object.keys(AG_LIMITS)) {
+        if (body[k] === undefined) continue;
+        const [lo, hi, col] = AG_LIMITS[k];
+        if (!Number.isInteger(body[k]) || body[k] < lo || body[k] > hi) return err(400, 'bad_settings');
+        next[col] = body[k];
+      }
+      if (next.per_operator_concurrency > next.worker_concurrency) return err(400, 'bad_settings');
+      ag.settings = next; save(); agentNotify(); return ok({ settings: next });
+    }
+    if (r === '/websites' && method === 'POST') {
+      const name = String(body.name || '').trim(), url = String(body.url || '').trim();
+      if (!name || name.length > 120 || !/^https:\/\/[^\s/]+\.[^\s]+$/i.test(url)) return err(400, 'bad_website');
+      const s = { id: 'site-' + Date.now().toString(36), name, url, op: '', worker: false, enabled: false, integrationStatus: 'pending', createdAt: now };
+      ag.sites.push(s); save(); agentNotify();
+      return json(201, { website: siteView(s, ag.tasks, now) });
+    }
+    m = r.match(/^\/websites\/([\w-]+)$/);
+    if (m && method === 'PATCH') {
+      const s = ag.sites.find(x => x.id === m[1]); if (!s) return err(404, 'not_found');
+      if (typeof body.enabled !== 'boolean') return err(400, 'bad_website');
+      s.enabled = body.enabled; save(); agentNotify();
+      return ok({ website: siteView(s, ag.tasks, now) });
+    }
+    return err(404, 'not_found');
+  }
+  // Sahifa ochilganda: hali tugamagan vazifalar uchun jonli yangilanishlar
+  try { const d = load(); if (d.agents) d.agents.tasks.forEach(scheduleTask); } catch (e) { /* yo'q */ }
+
   // AI yordamchi: demo'da Claude API'siz — qisqa tushuntirish
   function chatReply(body) {
     const lang = (body && body.lang) || 'uz';
@@ -320,8 +598,10 @@
     const method = ((init && init.method) || 'GET').toUpperCase();
     let body = null;
     if (init && typeof init.body === 'string') { try { body = JSON.parse(init.body); } catch (e) { body = null; } }
+    const hdr = {};
+    try { new Headers((init && init.headers) || {}).forEach((v, k) => { hdr[k.toLowerCase()] = v; }); } catch (e) { /* yo'q */ }
     await new Promise(r => setTimeout(r, 120 + Math.random() * 180));    // tarmoqdek kichik kechikish
-    try { return await route(method, m[0], url.searchParams, body); }
+    try { return await route(method, m[0], url.searchParams, body, hdr); }
     catch (e) { console.error('[demo]', e); return err(500, 'server'); }
   };
 

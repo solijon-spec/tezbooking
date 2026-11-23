@@ -48,6 +48,9 @@ Tashqi so'rovlar faqat konfiguratsiyadagi operator hostiga yuboriladi: DNS natij
 - Server kerak emas: sayt va admin panel API'si brauzer ichida taqlid qilinadi (`js/demo-api.js`).
 - Har bir tashrif buyuruvchining o'z demo nusxasi bor (brauzerda saqlanadi), "Qayta boshlash" tugmasi boshlang'ich holatga qaytaradi.
 - Demo faqat `*.github.io` da yoki manzilga `?demo` qo'shilganda yoqiladi (`?demo=0` — o'chiradi). Oddiy ishda (`npm start`) hech narsa qilmaydi.
+- **Admin panel → Agentlar** ham ishlaydi: Main Agent topshiriqni tahlil qiladi (`js/agent-parser.js` — serverdagi bilan bir xil kod),
+  9 ta operator ishchisi navbat bilan "qidiradi" va saytdagi demo narxlardan takliflar qaytaradi; ba'zan ishchi kutish vaqtidan oshib,
+  ogohlantirish chiqadi. Operator saytlariga so'rov yuborilmaydi.
 
 **Lokal (shu kompyuterda):** `npm run demo` → sayt http://localhost:3100, admin http://localhost:3101
 - Alohida baza `data/demo.db` — haqiqiy baza va `.env` parollariga tegilmaydi. Qayta to'ldirish: `npm run demo -- --reset`.
