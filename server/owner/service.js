@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const { COUNTRY_RU } = require('../live/samo');
-const { validDate } = require('../live/validation');
+const { validDate, FROM_IDS } = require('../live/validation');
 const { INITIAL_SETTINGS, initialSites } = require('./registry');
 const { normalizeOffer, compareOffers } = require('./normalize');
 const { TASK_TRANSITIONS, EXECUTION_TRANSITIONS, canTransition } = require('./state');
@@ -56,7 +56,7 @@ function validateSearchParameters(input, now = Date.now()) {
   if (mealPlan && !MEALS.has(mealPlan)) return null;
   const departureAirport = input.departureAirport === undefined || input.departureAirport === null || input.departureAirport === ''
     ? null
-    : ['tas', 'skd', 'dyu'].includes(input.departureAirport) ? input.departureAirport : false;
+    : FROM_IDS.includes(input.departureAirport) ? input.departureAirport : false;
   if (departureAirport === false) return null;
 
   return {
@@ -202,6 +202,19 @@ function createOwnerService({ db, now = Date.now, emit = () => {} }) {
     name, url, loginUrl, searchUrl, websiteType, enabled ? 1 : 0, customInstructions, now(), id);
     activity('website_updated', 'Website configuration updated; integration remains pending.', 'info', { websiteId: id });
     return websiteView(get('SELECT * FROM websites WHERE id = ?', id));
+  }
+
+  // Ishchisi (adapter) serverda o'rnatilgan operator: "tasdiqlangan" va "tayyor" holatiga o'tadi.
+  // Faqat server ishga tushganda, kodda ro'yxatdan o'tgan ishchilar uchun chaqiriladi (foydalanuvchi so'rovi bilan emas).
+  function markWorkerConnected(id, websiteType) {
+    const row = get('SELECT integration_status, worker_status, website_type FROM websites WHERE id = ?', id);
+    if (!row || !SITE_TYPES.has(websiteType)) return false;
+    if (row.integration_status === 'verified' && row.website_type === websiteType && row.worker_status !== 'pending') return true;
+    run(`UPDATE websites SET integration_status = 'verified', website_type = ?,
+      worker_status = CASE WHEN worker_status = 'pending' THEN 'idle' ELSE worker_status END, updated_at = ? WHERE id = ?`,
+    websiteType, now(), id);
+    activity('website_connected', 'Operator worker registered; integration marked verified.', 'info', { websiteId: id, websiteType });
+    return true;
   }
 
   function settings() {
@@ -535,6 +548,7 @@ function createOwnerService({ db, now = Date.now, emit = () => {} }) {
       const offerCount = get('SELECT COUNT(*) AS n FROM hotel_offers WHERE execution_id = ?', id).n;
       run(`UPDATE worker_executions SET status = 'completed', error_code = NULL, offers_found = ?,
         lease_until = NULL, finished_at = ? WHERE id = ?`, offerCount, now(), id);
+      run('UPDATE websites SET last_successful_search = ?, last_error = NULL WHERE id = ?', now(), current.website_id);
       setWebsiteWorkerStatus(current.website_id, 'idle');
       executionEvent(id, current.task_id, current.attempts, 'completed', 'Worker execution completed.',
         null, { offersFound: offerCount });
@@ -555,6 +569,7 @@ function createOwnerService({ db, now = Date.now, emit = () => {} }) {
       const nextStatus = shouldRetry ? 'queued' : 'failed';
       run(`UPDATE worker_executions SET status = ?, error_code = ?, lease_until = NULL, finished_at = ?
         WHERE id = ?`, nextStatus, code, shouldRetry ? null : now(), id);
+      run('UPDATE websites SET last_error = ? WHERE id = ?', code, current.website_id);
       setWebsiteWorkerStatus(current.website_id, shouldRetry ? 'idle' : 'failed');
       executionEvent(id, current.task_id, current.attempts,
         shouldRetry ? 'retry_scheduled' : 'failed',
@@ -761,7 +776,7 @@ function createOwnerService({ db, now = Date.now, emit = () => {} }) {
   }
 
   return {
-    listWebsites, createWebsite, updateWebsite, settings, updateSettings, createSearch, getTask, listTasks,
+    listWebsites, createWebsite, updateWebsite, markWorkerConnected, settings, updateSettings, createSearch, getTask, listTasks,
     transitionTask, transitionExecution, executionContext, listQueuedExecutions, claimExecution,
     heartbeatExecution, logWorkerEvent, completeExecution, failExecution, blockExecution, recoverInterruptedExecutions,
     cancelTask, listActivities, listAlerts, resolveAlert, listLogs, listOffers, overview, mainAgent,

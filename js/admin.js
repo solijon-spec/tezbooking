@@ -43,11 +43,24 @@
   const ASK = {
     destination: 'Qaysi shahar yoki kurort?', country: 'Qaysi davlat?', date: 'Uchish sanasi qachon? (masalan: 15-dekabr yoki 2026-12-15)',
     adults: 'Necha katta kishi?', nights: 'Necha kecha?', childrenAges: 'Bolalar yoshi necha?',
-    departureAirport: 'Qayerdan uchiladi: Toshkent, Samarqand yoki Dushanbe?', budget: 'Byudjet qancha?', currency: 'Qaysi valyutada?',
+    departureAirport: 'Qayerdan uchiladi? (Toshkent, Samarqand, Buxoro, Urganch, Namangan, Farg\'ona, Andijon, Termiz, Navoiy, Qarshi, Nukus, Dushanbe)', budget: 'Byudjet qancha?', currency: 'Qaysi valyutada?',
     mealPlan: 'Ovqatlanish turi (BB, HB, AI...)?', hotelStars: 'Mehmonxona necha yulduzli?'
   };
   const COUNTRY_OPTS = [['tr', 'Turkiya'], ['ae', 'BAA'], ['eg', 'Misr'], ['ge', 'Gruziya'], ['az', 'Ozarbayjon'], ['th', 'Tailand'],
     ['vn', 'Vyetnam'], ['my', 'Malayziya'], ['lk', 'Shri-Lanka'], ['mv', 'Maldiv'], ['id', 'Indoneziya']];
+  // Uchish shaharlari (server/live/validation.js FROM_IDS bilan bir xil)
+  const FROM_OPTS = [['tas', 'Toshkent'], ['skd', 'Samarqand'], ['bhk', 'Buxoro'], ['ugc', 'Urganch'], ['nma', 'Namangan'], ['feg', 'Farg\'ona'],
+    ['azn', 'Andijon'], ['tmj', 'Termiz'], ['nvi', 'Navoiy'], ['ksq', 'Qarshi'], ['ncu', 'Nukus'], ['dyu', 'Dushanbe']];
+  // Ishchilar jurnali: jonli ishchi (server/owner/live-workers.js) hodisalari
+  const LOG_EV = {
+    adapter_search_done: 'Operatordan qidirildi', adapter_search_cached: 'Qidirildi (keshdan, 10 daqiqa ichida)',
+    adapter_no_seats: 'Turlar bor, lekin joy yo\'q (mehmonxona yoki reys)', adapter_destination_no_match: 'Bu kurortga tur yo\'q',
+    adapter_no_match_filters: 'Filtrlarga (ovqat, yulduz, byudjet) mos tur yo\'q', adapter_no_offers_no_country: 'Operator bu davlatga sotmaydi',
+    adapter_no_offers_no_departure: 'Operatorda bu shahardan uchish yo\'q', adapter_no_offers_empty: 'Bu sana va kechalarga tur yo\'q',
+    adapter_no_offers_closed: 'Operator qidiruvi vaqtincha yopiq', retry_scheduled: 'Xato — qayta urinish navbatda'
+  };
+  const AVAIL = { available: ['ok', 'Joy bor'], on_request: ['wait', 'So\'rov bo\'yicha'], sold_out: ['off', 'Sotuvda yo\'q'], unknown: ['past', 'Noma\'lum'] };
+  const MEAL_UZ = { RO: 'Ovqatsiz', BB: 'Nonushta', HB: 'Yarim pansion', FB: 'To\'liq pansion', AI: 'Hammasi kiritilgan', UAI: 'Ultra hammasi kiritilgan' };
 
   const state = {
     tab: 'overview', stats: null, bookings: [], agencies: [], payments: [], tariffs: [], today: '',
@@ -119,7 +132,12 @@
 </main>`;
   }
   function showLogin(error) {
-    screen('Admin panelga kirish', 'Parol <code>.env</code> faylidagi <code>ADMIN_PASSWORD</code> qatorida.', `
+    // Onlayn demo (GitHub Pages, ?demo): server yo'q, .env ham yo'q — demo parolini ko'rsatamiz
+    const demoPw = window.TezDemo && window.TezDemoSeed && window.TezDemoSeed.LOGINS && window.TezDemoSeed.LOGINS.admin;
+    const hint = demoPw
+      ? 'Bu demo versiya. Demo paroli: <code>' + esc(demoPw) + '</code> (haqiqiy serverdagi parol bu yerda ishlamaydi).'
+      : 'Parol <code>.env</code> faylidagi <code>ADMIN_PASSWORD</code> qatorida.';
+    screen('Admin panelga kirish', hint, `
     <form class="ad-form" id="login" novalidate>
       <label class="label" for="pw">Parol</label>
       <input id="pw" class="input" type="password" autocomplete="current-password" required>
@@ -547,7 +565,9 @@ ${(s.watch || []).length ? `
       <label><span class="label">Bolalar yoshi</span><input class="input input-sm" name="childrenAges" placeholder="masalan: 5, 9" pattern="\\s*(\\d{1,2}\\s*(,\\s*\\d{1,2}\\s*){0,3})?"></label>
       <label><span class="label">Byudjet (jami)</span><input class="input input-sm" type="number" name="budget" min="1" placeholder="ixtiyoriy"></label>
       <label><span class="label">Valyuta</span><select class="input input-sm" name="currency"><option>USD</option><option>EUR</option><option>UZS</option></select></label>
-      <label><span class="label">Qayerdan</span><select class="input input-sm" name="departureAirport"><option value="">Farqi yo'q</option><option value="tas">Toshkent</option><option value="skd">Samarqand</option><option value="dyu">Dushanbe</option></select></label>
+      <label><span class="label">Qayerdan</span><select class="input input-sm" name="departureAirport"><option value="">Toshkent (sukut)</option>${FROM_OPTS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+      <label><span class="label">Ovqatlanish</span><select class="input input-sm" name="mealPlan"><option value="">Farqi yo'q</option>${Object.keys(MEAL_UZ).map(k => `<option value="${k}">${k} — ${MEAL_UZ[k]}</option>`).join('')}</select></label>
+      <label><span class="label">Yulduz (kamida)</span><select class="input input-sm" name="hotelStars"><option value="">Farqi yo'q</option><option>3</option><option>4</option><option>5</option></select></label>
       <button class="btn btn-dark" type="submit">Navbatga qo'yish</button>
     </form>
   </details>
@@ -628,7 +648,7 @@ ${(s.watch || []).length ? `
       <tr>
         <td data-th="Vaqt" class="nowrap">${esc(stamp(l.at))}</td>
         <td data-th="Operator"><b>${esc(l.website)}</b></td>
-        <td data-th="Hodisa">${esc(String(l.eventType || 'status').replace(/_/g, ' '))}</td>
+        <td data-th="Hodisa">${esc(LOG_EV[l.eventType] || String(l.eventType || 'status').replace(/_/g, ' '))}</td>
         <td data-th="Holat">${badge(TASK_ST, l.status)}</td>
         <td data-th="Urinish" class="num">${l.attempts || 0}</td>
         <td data-th="Tafsilot">${esc(l.errorCode || '')}${l.message ? `<span class="hint ad-sub">${esc(l.message)}</span>` : ''}</td>
@@ -638,28 +658,41 @@ ${(s.watch || []).length ? `
   }
 
   async function showOffers(task) {
-    dialog(`<h2 id="dlg-title" class="h2">Natijalar</h2><p class="muted">${esc(task.command || '')}</p><p class="muted">Yuklanmoqda…</p>`);
+    dialog(`<h2 id="dlg-title" class="h2">Natijalar</h2><p class="muted">${esc(task.command || '')}</p><p class="muted">Yuklanmoqda…</p>`, true);
     const r = await act(() => agentApi('/searches/' + encodeURIComponent(task.id) + '/offers'));
     if (!r) return;
-    const rows = [].concat(...(r.comparison || []).map(gr => (gr.offers || []).map(o => Object.assign({ identity: gr.identityVerified }, o))));
+    const rows = [].concat(...(r.comparison || []).map(gr => (gr.offers || []).map(o => Object.assign({ identity: gr.identityVerified }, o))))
+      .sort((a, b) => a.totalPrice - b.totalPrice);
+    const SHOW = 300;
+    const ops = new Set(rows.map(o => o.operatorName)).size;
+    const dmy = (iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '';
+    const safeUrl = (u) => /^https?:\/\//i.test(u || '') ? u : '';
     dialog(`
       <div class="row-between"><h2 id="dlg-title" class="h2">Natijalar</h2><button type="button" class="btn btn-sm" data-close>Yopish</button></div>
       <p class="muted">${esc(task.command || '')} · ${badge(TASK_ST, task.status)}</p>
-      ${!rows.length ? `<p class="muted">${task.status === 'blocked' ? 'Mos (yoqilgan va tasdiqlangan) operator ishchisi yo\'q — topshiriq hech qayerga yuborilmadi.' : 'Hali takliflar yo\'q.'}</p>` : `
+      ${!rows.length ? `<p class="muted">${task.status === 'blocked' ? 'Mos (yoqilgan va tasdiqlangan) operator ishchisi yo\'q — topshiriq hech qayerga yuborilmadi.' : ['queued', 'running'].indexOf(task.status) >= 0 ? 'Ishchilar operatorlardan qidirmoqda…' : 'Takliflar topilmadi. Sababi "Ishchilar jurnali"da: operator bu davlatga sotmaydi, shu kunga tur yo\'q yoki kurort/filtrga mos kelmadi.'}</p>` : `
+      <p class="hint">${rows.length} ta taklif · ${ops} ta operator · eng arzoni ${esc(group(rows[0].totalPrice))} ${esc(rows[0].currency)}. Sana ±3 kun oralig'ida qidirildi (saytdagidek). Narxlar — operatorning ochiq qidiruv sahifasidan (netto, butun guruh uchun); bron paytida operator tasdiqlaydi.</p>
       <div class="ad-scroll"><table class="ad-table">
-        <thead><tr><th>Mehmonxona</th><th>Operator</th><th class="num">Narx</th><th>Mavjudlik</th><th>Tekshiruv</th></tr></thead>
-        <tbody>${rows.map(o => `<tr>
-          <td data-th="Mehmonxona"><b>${esc(o.hotelName)}</b></td>
-          <td data-th="Operator">${esc(o.operatorName)}</td>
-          <td data-th="Narx" class="num nowrap">${esc(group(o.totalPrice))} ${esc(o.currency)}</td>
-          <td data-th="Mavjudlik">${esc(o.availability)}</td>
-          <td data-th="Tekshiruv">${o.verificationStatus === 'verified' ? '<span class="ad-status ad-s-ok">Tasdiqlangan</span>' : '<span class="ad-status ad-s-past">Tasdiqlanmagan</span>'}</td></tr>`).join('')}</tbody>
-      </table></div>`}`);
+        <thead><tr><th>Mehmonxona</th><th>Operator</th><th>Sana</th><th>Ovqat / xona</th><th class="num">Narx</th><th>Mavjudlik</th></tr></thead>
+        <tbody>${rows.slice(0, SHOW).map(o => {
+          const x = o.offer || {};
+          const url = safeUrl(o.sourceUrl);
+          return `<tr>
+          <td data-th="Mehmonxona"><b>${esc(o.hotelName)}</b>${x.hotelStars ? ' <span class="hint">' + '★'.repeat(x.hotelStars) + '</span>' : ''}${x.hotelLocation ? `<span class="hint ad-sub">${esc(x.hotelLocation)}</span>` : ''}</td>
+          <td data-th="Operator" class="nowrap">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(o.operatorName)} ↗</a>` : esc(o.operatorName)}</td>
+          <td data-th="Sana" class="nowrap">${esc(dmy(x.checkIn))}${x.nights ? ' · ' + esc(x.nights) + ' kecha' : ''}${x.departure ? `<span class="hint ad-sub">✈ ${esc(x.departure)}</span>` : ''}</td>
+          <td data-th="Ovqat / xona">${x.mealPlan && x.mealPlan !== 'unknown' ? `<b>${esc(x.mealPlan)}</b> <span class="hint">${esc(MEAL_UZ[x.mealPlan] || '')}</span>` : '—'}${x.roomType ? `<span class="hint ad-sub">${esc(x.roomType)}</span>` : ''}</td>
+          <td data-th="Narx" class="num nowrap"><b>${esc(group(o.totalPrice))} ${esc(o.currency)}</b>${x.gds ? '<span class="hint ad-sub">GDS reys</span>' : ''}</td>
+          <td data-th="Mavjudlik">${badge(AVAIL, o.availability)}</td></tr>`;
+        }).join('')}</tbody>
+      </table></div>
+      ${rows.length > SHOW ? `<p class="hint">Eng arzon ${SHOW} tasi ko'rsatildi (jami ${rows.length}).</p>` : ''}`}`, true);
   }
 
   // ---------- Oyna va xabar ----------
-  function dialog(html) {
+  function dialog(html, wide) {
     const dlg = document.getElementById('dlg');
+    dlg.classList.toggle('is-wide', !!wide);
     document.getElementById('dlg-body').innerHTML = html;
     if (!dlg.open) dlg.showModal();
     return dlg;
@@ -876,7 +909,8 @@ ${(s.watch || []).length ? `
           destination: data.destination, country: data.country, date: data.date,
           nights: Number(data.nights), adults: Number(data.adults),
           childrenAges: ages ? ages.split(',').map(x => Number(x.trim())) : [],
-          budget: data.budget ? Number(data.budget) : null, currency: data.currency, departureAirport: data.departureAirport || null
+          budget: data.budget ? Number(data.budget) : null, currency: data.currency, departureAirport: data.departureAirport || null,
+          mealPlan: data.mealPlan || null, hotelStars: data.hotelStars ? Number(data.hotelStars) : null
         };
         a = await act(() => agentApi('/searches', 'POST', { parameters }, { 'Idempotency-Key': uid() }));
         if (a) { form.reset(); agentQueued(a); }

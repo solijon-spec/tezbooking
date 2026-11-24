@@ -69,6 +69,9 @@ function normalizeOffer(input, now = Date.now) {
     baggage,
     baggageVerified: !!baggage,
     transferIncluded: typeof input.transferIncluded === 'boolean' ? input.transferIncluded : null,
+    // Tur paket: uchish (masalan "TAS → SSH · 2026-12-06 10:25") va GDS (muntazam reys) belgisi
+    departure: optionalText(input.departure, 80),
+    gds: typeof input.gds === 'boolean' ? input.gds : null,
     verificationStatus: input.verified === true ? 'verified' : 'unverified',
     retrievedAt: now()
   };

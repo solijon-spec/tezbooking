@@ -161,29 +161,31 @@ function createLive({
     return limiter.run(operator.id, () => searches[kind](operator, query));
   }
 
-  async function searchAll(kind, query) {
-    const results = await Promise.all(operators.map(async operator => {
-      const started = now();
-      try {
-        const response = await searchOperator(kind, operator, query);
-        const offers = response.offers.filter(offer => offer.avail !== 'stop')
-          .sort((a, b) => a.price - b.price).slice(0, PER_OP);
-        return {
-          id: operator.id,
-          status: offers.length ? 'ok' : (response.note || 'empty'),
-          count: offers.length,
-          ms: now() - started,
-          offers
-        };
-      } catch (error) {
-        const failure = safeFailure(error);
-        return { id: operator.id, ...failure, count: 0, ms: now() - started, offers: [] };
-      }
-    }));
+  // Bitta operator: natija yoki xavfsiz xato holati (istisno otilmaydi)
+  async function runOperator(kind, operator, query) {
+    const started = now();
+    let result;
+    try {
+      const response = await searchOperator(kind, operator, query);
+      const offers = response.offers.filter(offer => offer.avail !== 'stop')
+        .sort((a, b) => a.price - b.price).slice(0, PER_OP);
+      result = {
+        id: operator.id,
+        status: offers.length ? 'ok' : (response.note || 'empty'),
+        count: offers.length,
+        ms: now() - started,
+        offers
+      };
+    } catch (error) {
+      const failure = safeFailure(error);
+      result = { id: operator.id, ...failure, count: 0, ms: now() - started, offers: [] };
+    }
+    health[result.id] = { status: result.status, count: result.count, at: now() };
+    return result;
+  }
 
-    results.forEach(result => {
-      health[result.id] = { status: result.status, count: result.count, at: now() };
-    });
+  async function searchAll(kind, query) {
+    const results = await Promise.all(operators.map(operator => runOperator(kind, operator, query)));
     return {
       offers: [].concat(...results.map(result => result.offers)),
       operators: results.map(({ id, status, count, ms, error }) => ({ id, status, count, ms, error })),
@@ -245,16 +247,51 @@ function createLive({
     return { entry, data };
   }
 
-  // Server ichidan (Telegram bot): so'rov tekshiriladi xuddi saytdagidek, natija keshdan
-  async function search(kind, params) {
+  function queryOf(kind, params) {
     if (!ROUTES['/api/live/' + kind]) throw new Error('bad kind');
     const url = new URL('http://local/api/live/' + kind + '?' + new URLSearchParams(params));
     const query = parseLiveQuery(kind, url, { countries: samo.COUNTRY_RU, now });
     if (!query) throw new Error('bad query');
-    return (await cachedSearch(kind, query)).data;
+    return query;
   }
 
-  return { handle, search, OPERATORS: operators, stats: () => limiter.stats() };
+  // Server ichidan (Telegram bot): so'rov tekshiriladi xuddi saytdagidek, natija keshdan
+  async function search(kind, params) {
+    return (await cachedSearch(kind, queryOf(kind, params))).data;
+  }
+
+  // Bitta operator (agent ishchilari uchun). Sayt yoki bot xuddi shu so'rovni yaqinda qilgan bo'lsa — umumiy keshdan;
+  // aks holda faqat shu operatorga so'rov (o'z keshi bilan). Xato natija keshlanmaydi — qayta urinish yangidan so'raydi.
+  const oneCache = new Map();
+  async function searchOne(kind, operatorId, params) {
+    const operator = operators.find(op => op.id === operatorId);
+    if (!operator) throw new Error('unknown operator');
+    const query = queryOf(kind, params);
+    const key = kind + JSON.stringify(query);
+    const shared = cache.get(key);
+    if (shared && shared.data && now() - shared.at <= CACHE_MS) {
+      const status = shared.data.operators.find(op => op.id === operatorId);
+      if (status && status.status !== 'error' && status.status !== 'busy') {
+        return Object.assign({}, status, { offers: shared.data.offers.filter(o => o.opId === operatorId), cached: true });
+      }
+    }
+    const oneKey = key + '|' + operatorId;
+    let entry = oneCache.get(oneKey);
+    if (entry && now() - entry.at > CACHE_MS) { oneCache.delete(oneKey); entry = null; }
+    if (!entry) {
+      entry = { at: now(), promise: runOperator(kind, operator, query) };
+      oneCache.set(oneKey, entry);
+      if (oneCache.size > MAX_CACHE) oneCache.delete(oneCache.keys().next().value);
+      entry.promise.then(result => {
+        if (result.status === 'error' || result.status === 'busy') oneCache.delete(oneKey);
+        else entry.at = now();
+      });
+    }
+    const result = await entry.promise;
+    return Object.assign({}, result, { cached: false });
+  }
+
+  return { handle, search, searchOne, OPERATORS: operators, stats: () => limiter.stats() };
 }
 
 module.exports = { createLive, configFromEnv, parseLiveQuery, OPERATORS };

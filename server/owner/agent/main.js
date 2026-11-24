@@ -2,6 +2,7 @@
 
 const { validateSearchParameters } = require('../service');
 const { parseNaturalLanguage, countryCode } = require('./parser');
+const { FROM_IDS } = require('../../live/validation');
 
 const QUESTIONS = {
   destination: 'Which destination city or resort should I search?',
@@ -10,7 +11,7 @@ const QUESTIONS = {
   adults: 'How many adults are travelling?',
   nights: 'How many nights should the trip last?',
   childrenAges: 'What are the ages of each child?',
-  departureAirport: 'Which departure airport should I use (Tashkent, Samarkand, or Dushanbe)?',
+  departureAirport: 'Which departure city should I use (Tashkent, Samarkand, Bukhara, Urgench, Namangan, Fergana, Andijan, Termez, Navoi, Karshi, Nukus or Dushanbe)?',
   budget: 'What budget and currency should I use?',
   currency: 'Which currency should I use for the budget?',
   mealPlan: 'Which meal plan should I search for (RO, BB, HB, FB, AI, or UAI)?',
@@ -33,7 +34,7 @@ function createMainAgent({ service, workers, scheduler, llmParser, now = Date.no
       && (!Number.isFinite(parameters.budget) || parameters.budget <= 0 || parameters.budget > 100000000)) missing.add('budget');
     if (parameters.currency !== undefined && !['USD', 'EUR', 'UZS'].includes(String(parameters.currency).toUpperCase())) missing.add('currency');
     if (parameters.mealPlan != null && !['RO', 'BB', 'HB', 'FB', 'AI', 'UAI'].includes(String(parameters.mealPlan).toUpperCase())) missing.add('mealPlan');
-    if (parameters.departureAirport != null && !['tas', 'skd', 'dyu'].includes(parameters.departureAirport)) missing.add('departureAirport');
+    if (parameters.departureAirport != null && !FROM_IDS.includes(parameters.departureAirport)) missing.add('departureAirport');
     if (parameters.hotelStars != null && (!Number.isInteger(parameters.hotelStars) || parameters.hotelStars < 1 || parameters.hotelStars > 5)) missing.add('hotelStars');
     return [...missing];
   }

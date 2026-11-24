@@ -398,10 +398,11 @@
       Number.isInteger(p.nights) && p.nights >= 1 && p.nights <= 30 && Number.isInteger(p.adults) && p.adults >= 1 && p.adults <= 8 &&
       ages.length <= 4 && ages.every(a => Number.isInteger(a) && a >= 0 && a <= 17) &&
       (p.budget == null || (Number.isFinite(p.budget) && p.budget > 0)) && (p.currency == null || ['USD', 'EUR', 'UZS'].includes(String(p.currency).toUpperCase())) &&
-      (p.departureAirport == null || ['tas', 'skd', 'dyu'].includes(p.departureAirport));
+      (p.departureAirport == null || window.TB.FROM.some(f => f.id === p.departureAirport)) &&
+      (p.hotelStars == null || (Number.isInteger(p.hotelStars) && p.hotelStars >= 1 && p.hotelStars <= 5));
     return ok ? { destination: p.destination.trim(), country, date: p.date, nights: p.nights, adults: p.adults, childrenAges: ages,
       budget: p.budget == null ? null : p.budget, currency: String(p.currency || 'USD').toUpperCase(), mealPlan: p.mealPlan || null,
-      departureAirport: p.departureAirport || null } : null;
+      hotelStars: p.hotelStars == null ? null : p.hotelStars, departureAirport: p.departureAirport || null } : null;
   }
   const ASK_FIELDS = ['destination', 'country', 'date', 'adults', 'nights', 'childrenAges'];
   function missingOf(p, suggested) {

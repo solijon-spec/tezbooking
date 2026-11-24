@@ -289,11 +289,23 @@ Manzil: **http://localhost:3000/owner**. Bu mavjud agentlik va mijoz sahifalarid
 2. `OWNER_DB_FILE=data/owner-os.db` mijozlarning `DB_FILE` bazasidan alohida bo'lishi shart. Owner migratsiyalari faqat shu alohida SQLite faylida ishlaydi.
 3. Serverni qayta ishga tushirib, `/owner` ni oching. Xesh sozlanmagan bo'lsa, Owner kirishi o'chirilgan qoladi.
 
-Paneldagi umumiy ko'rsatkichlar OS/process hamda Owner bazasidagi haqiqiy holatdan olinadi; mavjud bo'lmagan ishchi, narx yoki natija uydirilmaydi. 19 ta operator konfiguratsiyasi **pending** holatda qoladi; hech qanday haqiqiy supplier adapteri yoki browser worker o'rnatilmagan.
+Paneldagi umumiy ko'rsatkichlar OS/process hamda Owner bazasidagi haqiqiy holatdan olinadi; mavjud bo'lmagan ishchi, narx yoki natija uydirilmaydi. 19 ta operatordan 13 tasi saytning jonli qidiruvi orqali ulangan (pastda — "Agent haqiqiy operatorlardan"); qolgan 6 tasi (Asialuxe, Pegas, Kazunion UAE, Velikolepniy Vek, Rezlive, Mir Jahon) **pending** holatda — ularning ochiq SAMO qidiruvi yo'q, login yoki API kaliti kerak.
 
 Main Agent tuzilgan va tabiiy tildagi so'rovlarni tekshiradi, majburiy ma'lumot yetishmasa aniqlashtirish so'raydi va vazifalarni alohida Owner SQLite bazasida saqlaydi. Tabiiy til parseri deterministik tarzda ishlaydi. Ixtiyoriy LLM parseri `AGENT_LLM_ENABLED=1` va serverdagi `AGENT_LLM_API_KEY` bilan yoqiladi; kalit yo'q bo'lsa deterministik parser ishlaydi. LLM javob bermasa xato ochiq ko'rsatiladi, muvaffaqiyat sifatida yashirilmaydi.
 
-Doimiy navbat scheduler orqali ishlaydi: global va operator bo'yicha parallelizm, vaqt cheklovi, chegaralangan qayta urinishlar, bekor qilish va qayta ishga tushganda uzilgan vazifalarni tiklash qo'llab-quvvatlanadi. Owner panel vazifa holatini SSE orqali kuzatadi. Faqat ro'yxatga olingan adapteri bor, yoqilgan va `verified` operatorga dispatch qilinishi mumkin; hozir bunday adapterlar yo'q, shuning uchun dashboarddan berilgan qidiruvlar supplier saytlariga ulanmaydi. Adapterlar va supplier hisoblari bilan real qidiruvlar faqat alohida ruxsat etilgan integratsiya sinovlaridan so'ng amalga oshirilishi kerak.
+Doimiy navbat scheduler orqali ishlaydi: global va operator bo'yicha parallelizm, vaqt cheklovi, chegaralangan qayta urinishlar, bekor qilish va qayta ishga tushganda uzilgan vazifalarni tiklash qo'llab-quvvatlanadi. Owner panel vazifa holatini SSE orqali kuzatadi. Faqat ro'yxatga olingan adapteri bor, yoqilgan va `verified` operatorga dispatch qilinishi mumkin. Supplier hisoblari (login/parol) bilan ishlaydigan adapterlar hali yo'q — ular faqat alohida ruxsat etilgan integratsiya sinovlaridan so'ng qo'shilishi kerak.
+
+### Agent haqiqiy operatorlardan (jonli ishchilar)
+
+`server/owner/live-workers.js` — 13 ta operator ishchisi (Aqua, Centrum, Crystal Bay, Easybooking, Fly Khiva, FS Travel, Kazunion, Kompas, Malva, Prestige, Savtour, Selfie, Vietra). Server ishga tushganda ular ro'yxatga olinadi va operator "Tasdiqlangan / Tayyor" holatiga o'tadi.
+
+- Ishchi saytdagi qidiruv bilan bir xil yo'ldan boradi: operatorning **ochiq** "Поиск тура" sahifasi (login yo'q, himoya chetlab o'tilmaydi), sana ±3 kun, kesh sayt va Telegram bot bilan umumiy (10 daqiqa).
+- Topshiriq bo'yicha saralash: kurort ("Antalya" — Kemer, Belek, Side, Lara, Alanya va h.k.; "Alanya" — faqat Alanya), ovqatlanish (AI so'ralsa UAI ham), yulduz (kamida), byudjet (USD; so'mda — Markaziy bank kursi bo'yicha; EUR — filtrsiz). Sotuvda yo'q va reysda joyi qolmagan turlar chiqmaydi.
+- Har bir operatordan eng arzon 30 ta taklif (`AGENT_LIVE_MAX_OFFERS`, 1–100); aynan so'ralgan kundagilar birinchi.
+- Natijada: mehmonxona, yulduz, joy, sana, kechalar, uchish (yo'nalish va soat), ovqat, xona, narx (USD, netto, butun guruh uchun), GDS belgisi, mavjudlik, operator sahifasiga havola.
+- Natija yo'q bo'lsa, sababi "Ishchilar jurnali"da: operator bu davlatga sotmaydi, bu shahardan uchish yo'q, shu kunlarga tur yo'q, joy qolmagan, kurort yoki filtrga mos kelmadi. Operator javob bermasa — xato, navbat sozlamasidagi qayta urinishlar bilan.
+- Matndan uchish shahri (12 ta: "Samarqanddan", "из Бухары", "from Namangan") va yulduz ("5 yulduzli", "4*", "5 звезд") ham tushuniladi.
+- O'chirish: `.env` → `AGENT_LIVE_WORKERS=0`. `npm run demo` da jonli ishchilar ulanmaydi (taqlidiy ishchi).
 
 Fazaviy tekshiruvlar `npm test` orqali bajariladi. Scheduler hozir bitta jarayon va SQLite muhitiga mo'ljallangan; bir nechta server nusxasi, uzoq muddatli lease nazorati va haqiqiy adapterlarning tarmoq xavfsizligi Phase 4 uchun qo'shimcha arxitektura hamda sinovni talab qiladi.
 

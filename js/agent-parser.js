@@ -47,6 +47,22 @@ const DESTINATIONS = [
   ['Maldives', 'mv', ['maldives', 'maldiv', 'мальдив']]
 ];
 
+// Uchish shaharlari (server/live/validation.js FROM_IDS bilan bir xil): "Samarqanddan", "из Ташкента", "from Bukhara"
+const FROM_CITIES = [
+  ['tas', ['toshkent', 'tashkent', 'ташкент', 'тошкент']],
+  ['skd', ['samarqand', 'samarkand', 'самарканд', 'самарқанд']],
+  ['bhk', ['buxoro', 'bukhara', 'бухар', 'бухоро']],
+  ['ugc', ['urganch', 'urgench', 'ургенч', 'урганч']],
+  ['nma', ['namangan', 'наманган']],
+  ['feg', ['fargona', 'farg ona', 'fargʻona', 'fergana', 'ферган', 'фарғона']],
+  ['azn', ['andijon', 'andijan', 'андижан', 'андижон']],
+  ['tmj', ['termiz', 'termez', 'термез', 'термиз']],
+  ['nvi', ['navoiy', 'navoi', 'навои', 'навоий']],
+  ['ksq', ['qarshi', 'karshi', 'карши', 'қарши']],
+  ['ncu', ['nukus', 'нукус']],
+  ['dyu', ['dushanbe', 'душанбе']]
+];
+
 function normalizedText(text) {
   return ` ${String(text).toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
 }
@@ -156,6 +172,10 @@ function parseNaturalLanguage(text) {
       : budgetMatch && budgetMatch[1] === '$' ? 'USD'
     : currencyMatch ? currencyMatch[1].toUpperCase() : 'USD';
 
+  const from = FROM_CITIES.find(([, aliases]) => aliases.some(alias => includesWord(normalized, alias)));
+  // "5 yulduzli", "4*", "5 звезд", "4 stars" — kamida shuncha yulduz
+  const starsMatch = text.match(/(?<![\p{L}\p{N}])([1-5])\s*(?:\*|yulduz\p{L}*|звезд\p{L}*|звёзд\p{L}*|stars?)(?![\p{L}])/iu);
+
   const missing = [];
   if (!destination) missing.push('destination');
   if (!country) missing.push('country');
@@ -175,11 +195,11 @@ function parseNaturalLanguage(text) {
     mealPlan,
     budget: Number.isFinite(budget) ? budget : null,
     currency,
-    hotelStars: null,
-    departureAirport: null
+    hotelStars: starsMatch ? Number(starsMatch[1]) : null,
+    departureAirport: from ? from[0] : null
   };
   return { parameters, missing: [...new Set(missing)], mode: 'deterministic' };
 }
 
-return { parseNaturalLanguage, countryCode, COUNTRIES, DESTINATIONS };
+return { parseNaturalLanguage, countryCode, COUNTRIES, DESTINATIONS, FROM_CITIES };
 });

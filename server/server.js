@@ -347,9 +347,20 @@ const ownerService = require('./owner/service').createOwnerService({
   emit: event => { if (ownerApi) ownerApi.emit(event); if (adminAgentsApi) adminAgentsApi.emit(event); }
 });
 const ownerWorkers = require('./owner/worker-registry').createWorkerRegistry();
+let agentWorkersInfo = process.env.TEZ_DEMO_AGENTS === '1' ? 'demo (taqlidiy ishchi)' : "ishchilar o'chiq (AGENT_LIVE_WORKERS=0)";
 // Demo (npm run demo): agentlar alohida demo bazada, taqlidiy ishchi bilan — operator saytlariga so'rov yuborilmaydi
 if (process.env.TEZ_DEMO_AGENTS === '1') {
   require('./owner/demo-server').setupDemoWorker({ database: ownerDb, service: ownerService, workers: ownerWorkers });
+} else if ((process.env.AGENT_LIVE_WORKERS || '1').trim() !== '0') {
+  // Haqiqiy ishchilar: agent topshirig'i saytning jonli qidiruvi orqali operatorlardan turlarni oladi (server/owner/live-workers.js)
+  try {
+    const liveWorkers = require('./owner/live-workers').registerLiveWorkers({
+      live, service: ownerService, workers: ownerWorkers,
+      maxOffers: Number(process.env.AGENT_LIVE_MAX_OFFERS) || 30,
+      uzsRate: (() => { try { return require('./telegram/post').loadSite(ROOT).TB.UZS_RATE; } catch (e) { return 0; } })()
+    });
+    agentWorkersInfo = liveWorkers.length + ' ta operator ishchisi (jonli qidiruv)';
+  } catch (e) { console.error('[agents] ishchilarni ulab bo\'lmadi:', e.message); }
 }
 const ownerScheduler = require('./owner/scheduler').createScheduler({ service: ownerService, workers: ownerWorkers });
 const llmEnabled = ['1', 'true', 'on'].includes(String(process.env.AGENT_LLM_ENABLED || '').trim().toLowerCase());
@@ -507,6 +518,7 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('  Baza:                     ' + path.relative(ROOT, DB_FILE) + '  (faol bronlar: ' + db.listActive().length + ')');
   console.log('  Admin panel:              ' + (adminApi.enabled ? ADMIN_URL : "O'CHIQ — .env fayliga ADMIN_PASSWORD yozing"));
   console.log('  Owner console:            ' + `http://localhost:${PORT}/owner` + (ownerAuth.enabled ? '  (Owner auth enabled)' : '  (O\'CHIQ — configure OWNER_PASSWORD_HASH)'));
+  console.log('  Agentlar:                 ' + agentWorkersInfo);
   console.log('  To\'lov rejimi:            ' + (accounts.mode === 'demo'
     ? "DEMO — to'lov pulsiz tasdiqlanadi! Haqiqiy saytda PAYMENT_MODE=manual qiling"
     : "manual — admin to'lovni qo'lda tasdiqlaydi"));
