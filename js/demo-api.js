@@ -84,6 +84,9 @@
   // ---------- Yordamchilar (server/*.js bilan bir xil ko'rinish) ----------
   const today = () => { const n = new Date(); return new Date(Date.UTC(n.getFullYear(), n.getMonth(), n.getDate())).toISOString().slice(0, 10); };
   const isActive = (a) => !!a && a.status === 'active' && a.paid_until > Date.now();
+  // Firma foizi (server/accounts.js bilan bir xil qoida): 0..50, 0.5 qadam; yo'q bo'lsa — 10
+  const cleanMarkup = (v) => { const n = typeof v === 'string' ? Number(v.replace(',', '.')) : v; return typeof n === 'number' && isFinite(n) && n >= 0 && n <= 50 ? Math.round(n * 2) / 2 : null; };
+  const markupOf = (a) => (a && typeof a.markup === 'number' ? a.markup : 10);
   const agencyById = (id) => load().agencies.find(a => a.id === id);
   const tariffView = (t) => ({ id: t.id, months: t.months, price: t.price, active: !!t.active });
   const bookingView = (b) => ({
@@ -98,6 +101,7 @@
   function agencyView(a) {
     const d = load();
     return { id: a.id, name: a.name, login: a.login, phone: a.phone, contact: a.contact, status: a.status,
+      markup: markupOf(a), source: a.source || 'admin',
       paidUntil: a.paid_until || null, active: isActive(a), createdAt: a.created_at, lastLogin: a.last_login,
       bookings: d.bookings.filter(b => b.agency_id === a.id && b.status !== 'cancelled').length,
       paidTotal: d.payments.filter(p => p.agency_id === a.id && p.status === 'paid').reduce((s, p) => s + p.amount, 0),
@@ -106,7 +110,7 @@
   function me(a) {
     const d = load();
     const mine = d.payments.filter(p => p.agency_id === a.id).sort((x, y) => y.created_at - x.created_at);
-    return { agency: { name: a.name, login: a.login, paidUntil: a.paid_until || null, active: isActive(a) },
+    return { agency: { name: a.name, login: a.login, paidUntil: a.paid_until || null, active: isActive(a), markup: markupOf(a), phone: a.phone || '' },
       pending: mine.filter(p => p.status === 'pending').map(payView), payments: mine.slice(0, 20).map(payView) };
   }
   function datesFromKey(key) {
@@ -198,7 +202,24 @@
     }
 
     // --- Tur firma ---
-    if (path === '/api/tariffs') return ok({ tariffs: d.tariffs.filter(t => t.active).map(tariffView), mode: 'demo' });
+    if (path === '/api/tariffs') return ok({ tariffs: d.tariffs.filter(t => t.active).map(tariffView), mode: 'demo', register: true, markupDefault: 10 });
+    if (path === '/api/agency/register' && method === 'POST') {
+      if (!body || body.website) return err(400, 'bad_request');
+      const login = String(body.login || '').trim().toLowerCase();
+      if (!/^[a-z0-9._-]{3,32}$/.test(login)) return err(400, 'bad_login');
+      if (d.agencies.some(x => x.login === login)) return err(400, 'login_taken');
+      const name = String(body.name || '').trim().slice(0, 120);
+      if (name.length < 2) return err(400, 'bad_name');
+      const markup = cleanMarkup(body.markup);
+      if (markup === null) return err(400, 'bad_markup');
+      const pw = String(body.password || '');
+      if (pw.length < 8 || !/\d/.test(pw) || !/[^\d\W_]/.test(pw)) return err(400, 'weak_password');
+      if (String(body.phone || '').replace(/\D/g, '').length < 9) return err(400, 'bad_phone');
+      const ag = { id: nid('ag'), name, login, password: pw, phone: String(body.phone).trim().slice(0, 40), contact: String(body.contact || '').trim().slice(0, 120),
+        status: 'active', paid_until: 0, created_at: Date.now(), last_login: Date.now(), markup, source: 'self' };
+      d.agencies.push(ag); sess.set('agency', ag.id);
+      return done(json(201, me(ag)), 'account');
+    }
     if (path === '/api/agency/login') {
       const a = d.agencies.find(x => x.login === String((body && body.login) || '').trim().toLowerCase());
       if (!a || a.password !== (body && body.password)) return err(401, 'bad_login');
@@ -218,6 +239,13 @@
         return done(ok(Object.assign(me(agency), { payment: payView(p), mode: 'demo' })), 'payment');
       }
       if (path === '/api/agency/password') return ok({ ok: true });
+      if (path === '/api/agency/markup') {
+        const m = cleanMarkup(body && body.markup);
+        if (m === null) return err(400, 'bad_markup');
+        agency.markup = m;
+        return done(ok(me(agency)));
+      }
+      if (path === '/api/agency/telegram-code') return ok({ code: String(100000 + Math.floor(Math.random() * 900000)), ttl: 600, demo: true });
       return err(404, 'not_found');
     }
 
@@ -242,6 +270,8 @@
         if (r === '/agencies') return ok({ agencies: d.agencies.slice().sort((x, y) => y.created_at - x.created_at).map(agencyView) });
         if (r === '/payments') return ok({ payments: d.payments.slice().sort((x, y) => y.created_at - x.created_at).map(payView) });
         if (r === '/tariffs') return ok({ tariffs: d.tariffs.map(tariffView) });
+        // Xavfsizlik qalqoni brauzer demosida yo'q (u serverda ishlaydi) — bo'sh ko'rinish
+        if (r === '/security') return ok({ enabled: false, demo: true, threshold: 10, steps: [15, 60, 360, 1440, 10080], bans: [], activeBans: 0, watch: [], events: [], last24h: {}, counters: {}, you: '127.0.0.1' });
         if (r === '/history') {
           const b = d.bookings.find(x => x.key === search.get('key'));
           return b ? ok({ events: d.events.filter(e => e.booking_id === b.id).map(e => ({ type: e.type, at: e.at, payload: e.payload })) }) : err(404, 'not_found');
@@ -264,13 +294,16 @@
           const name = String(body.name || '').trim().slice(0, 120);
           if (!name) return err(400, 'bad_name');
           const password = body.password && String(body.password).length >= 8 ? String(body.password) : genPassword();
-          const ag = { id: nid('ag'), name, login, password, phone: String(body.phone || '').trim(), contact: String(body.contact || '').trim(), status: 'active', paid_until: 0, created_at: Date.now(), last_login: null };
+          const markup = body.markup == null || body.markup === '' ? 10 : cleanMarkup(body.markup);
+          if (markup === null) return err(400, 'bad_markup');
+          const ag = { id: nid('ag'), name, login, password, phone: String(body.phone || '').trim(), contact: String(body.contact || '').trim(), status: 'active', paid_until: 0, created_at: Date.now(), last_login: null, markup, source: 'admin' };
           d.agencies.push(ag);
           return done(json(201, { agency: agencyView(ag), password }), 'account');
         }
         if (r === '/agencies/update') {
           if (!a) return err(404, 'not_found');
           a.name = String(body.name || a.name).trim() || a.name; a.phone = String(body.phone || '').trim(); a.contact = String(body.contact || '').trim();
+          if (body.markup != null && body.markup !== '') { const m = cleanMarkup(body.markup); if (m === null) return err(400, 'bad_markup'); a.markup = m; }
           return done(ok({ ok: true }));
         }
         if (r === '/agencies/reset') { if (!a) return err(404, 'not_found'); a.password = genPassword(); if (sess.get('agency') === a.id) sess.set('agency', null); return done(ok({ password: a.password }), 'account'); }

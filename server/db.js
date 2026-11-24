@@ -84,7 +84,49 @@ const MIGRATIONS = [
    );
    CREATE INDEX payments_agency ON payments(agency_id);
    CREATE INDEX payments_status ON payments(status);
-   ALTER TABLE bookings ADD COLUMN agency_id TEXT REFERENCES agencies(id);`
+   ALTER TABLE bookings ADD COLUMN agency_id TEXT REFERENCES agencies(id);`,
+
+  // 3: firma ustamasi (foiz), o'zi ro'yxatdan o'tganmi; Telegram bot; xavfsizlik (IP bloklash va hodisalar)
+  `ALTER TABLE agencies ADD COLUMN markup REAL NOT NULL DEFAULT 10;        -- firma oladigan foiz (mijoz narxi = netto + foiz)
+   ALTER TABLE agencies ADD COLUMN source TEXT NOT NULL DEFAULT 'admin';  -- admin | self (o'zi ro'yxatdan o'tgan)
+   CREATE TABLE tg_chats (
+     chat_id     TEXT PRIMARY KEY,
+     agency_id   TEXT REFERENCES agencies(id),
+     lang        TEXT NOT NULL DEFAULT 'uz',         -- uz | ru
+     post_lang   TEXT NOT NULL DEFAULT 'uz',         -- uz | ru | both
+     from_city   TEXT NOT NULL DEFAULT 'tas',
+     channel     TEXT,                               -- kanal chat id (-100...) yoki @username
+     channel_title TEXT,
+     phone       TEXT NOT NULL DEFAULT '',
+     state       TEXT,                               -- suhbat holati (JSON)
+     created_at  INTEGER NOT NULL,
+     updated_at  INTEGER NOT NULL
+   );
+   CREATE TABLE tg_posts (
+     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+     chat_id     TEXT NOT NULL,
+     target      TEXT NOT NULL,                      -- chat | channel
+     summary     TEXT,
+     at          INTEGER NOT NULL
+   );
+   CREATE INDEX tg_posts_chat ON tg_posts(chat_id, at);
+   CREATE TABLE ip_bans (
+     ip          TEXT PRIMARY KEY,
+     until       INTEGER NOT NULL,                   -- shu vaqtgacha bloklangan (ms)
+     strikes     INTEGER NOT NULL DEFAULT 1,         -- necha marta bloklangan (muddat oshib boradi)
+     reason      TEXT,
+     manual      INTEGER NOT NULL DEFAULT 0,
+     created_at  INTEGER NOT NULL,
+     updated_at  INTEGER NOT NULL
+   );
+   CREATE TABLE security_events (
+     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+     at          INTEGER NOT NULL,
+     ip          TEXT NOT NULL,
+     kind        TEXT NOT NULL,
+     detail      TEXT
+   );
+   CREATE INDEX security_events_at ON security_events(at);`
 ];
 
 const PRODUCTS = ['tour', 'hotel', 'flight'];

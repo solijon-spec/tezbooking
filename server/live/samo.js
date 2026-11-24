@@ -8,8 +8,8 @@
  * Operator API kalitini bergach, shu fayl o'rniga rasmiy SAMO export API'si ulanadi — natija formati o'zgarmaydi.
  *
  *   search(op, { country, date, nights, adults, childAges, from })  ->  { offers: [...], note }
- *   offer = { opId, hotelKey, hotel, stars, city, tour, checkIn, nights, meal, mealRaw, room, roomKey, mealKey,
- *             price (USD), avail: ok|few|req|stop, seats: ok|few|none }
+ *   offer = { opId, hotelKey, hotel, stars, city, tour, gds, dep (uchish, daqiqa | null), depDate, fromCode, toCode,
+ *             checkIn, nights, meal, mealRaw, room, roomKey, mealKey, price (USD), avail: ok|few|req|stop, seats: ok|few|none }
  */
 'use strict';
 
@@ -23,7 +23,15 @@ const COUNTRY_RU = {
   tr: ['Турция'], ge: ['Грузия'], az: ['Азербайджан'], ae: ['ОАЭ', 'Объединенные Арабские Эмираты', 'Объединённые Арабские Эмираты'],
   eg: ['Египет'], my: ['Малайзия'], th: ['Таиланд', 'Тайланд'], vn: ['Вьетнам'], id: ['Индонезия', 'Бали'], lk: ['Шри-Ланка', 'Шри Ланка'], mv: ['Мальдивы']
 };
-const FROM_RU = { tas: ['Ташкент'], skd: ['Самарканд'], dyu: ['Душанбе'] };
+// Jo'nash shaharlari (TezBooking kodi -> SAMO'dagi ruscha nomi). Ro'yxat js/data.js dagi FROM bilan bir xil.
+const FROM_RU = {
+  tas: ['Ташкент'], skd: ['Самарканд'], bhk: ['Бухара'], ugc: ['Ургенч'], nma: ['Наманган'], feg: ['Фергана'],
+  azn: ['Андижан'], tmj: ['Термез'], nvi: ['Навои'], ksq: ['Карши'], ncu: ['Нукус'], dyu: ['Душанбе']
+};
+// GDS (muntazam reys, chipta GDS orqali) paketlar. 2026-11-24 da haqiqiy javoblarda tekshirilgan belgilar:
+//   qator klassi "freight-external" (Easybooking), tur nomi "...(GDS)", ma'lumot ustuni "UZ-7255-IST+ GDS/...",
+//   Prestige'da "Отели ОАЭ- dynamic (а/к ...)" — dinamik paket ham shu turdagi.
+const GDS_RE = /\bGDS\b|регуляр|regular|рег\.\s*рейс|динамич|\bdynamic\b/i;
 
 const ymd = (iso) => iso.replace(/-/g, '');
 const isoFromYmd = (s) => s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8);
@@ -158,9 +166,19 @@ function parseRows(op, js) {
     const mealRaw = plain[idx + 2] || '';
     const room = plain[idx + 3] || '';
     const tourTd = tds.find(t => /\btour\b/.test(t.cls));
+    const tour = tourTd ? text(tourTd.html) : '';
+    // Uchish: <td class="arrival sortie ..."> 06.12.2026 <span data-popup="вылеты">10:25</span> — charter paketlarda bor
+    const sortie = tds.find(t => /\bsortie\b/.test(t.cls));
+    const depM = sortie && text(sortie.html).match(/(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})/);
+    // Ma'lumot ustuni: "TAS-2-SSH" (qayerdan-…-qayerga) yoki "UZ-7255-IST+ GDS/…"
+    const infoTd = tds.find(t => /\btype_price\b/.test(t.cls));
+    const info = infoTd ? text(infoTd.html) : '';
+    const route = info.match(/\b([A-Z]{3})-\d+-([A-Z]{3})\b/);
     out.push({
       opId: op.id, hotelKey: attr('hotel') || key('hotelKey'), hotel: name, stars: Math.min(5, stars), city,
-      tour: tourTd ? text(tourTd.html) : '', checkIn: isoFromYmd(attr('checkin') || key('checkIn')), nights: +(attr('nights') || key('nights')),
+      tour, gds: /\bfreight-external\b/.test(cls) || GDS_RE.test(tour) || /\bGDS\b/.test(info),
+      dep: depM ? +depM[4] * 60 + +depM[5] : null, depDate: depM ? depM[3] + '-' + depM[2] + '-' + depM[1] : null,
+      fromCode: route ? route[1] : '', toCode: route ? route[2] : '', checkIn: isoFromYmd(attr('checkin') || key('checkIn')), nights: +(attr('nights') || key('nights')),
       meal: mealCode(mealRaw), mealRaw, room, roomKey: key('roomKey'), mealKey: key('mealKey'),
       price: Math.round(parseFloat(priceM[1])), avail: availOf(body), seats: seatsOf(body)
     });
@@ -332,4 +350,4 @@ async function searchFlights(op, q) {
   } finally { clearTimeout(timer); }
 }
 
-module.exports = { search, searchHotels, searchFlights, parseRows, mealCode, seatsCode, COUNTRY_RU };
+module.exports = { search, searchHotels, searchFlights, parseRows, mealCode, seatsCode, COUNTRY_RU, FROM_RU, GDS_RE };

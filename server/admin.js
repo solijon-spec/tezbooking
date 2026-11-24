@@ -27,6 +27,11 @@
  *   GET  /api/admin/tariffs
  *   POST /api/admin/tariffs             { id, price, active }
  *
+ *   Xavfsizlik (server/security.js):
+ *   GET  /api/admin/security            bloklangan IP'lar, kuzatuvdagilar, oxirgi hodisalar
+ *   POST /api/admin/security/ban        { ip, minutes?, reason? }
+ *   POST /api/admin/security/unban      { ip }
+ *
  *   Agentlar (Main Agent, navbat, ishchilar) — Owner API'sining o'zi, admin sessiyasi bilan:
  *   /api/admin/agents/overview, /main-agent, /websites, /searches, /agent/searches, /settings, /alerts, /logs, /events ...
  *   (server/owner/index.js, server.js da ulanadi)
@@ -40,7 +45,9 @@ const COOKIE = 'tb_admin';
 const SESSION_MS = 12 * 3600 * 1000;
 const LOGIN_TRIES_PER_MIN = 5;
 
-function createAdminApi({ db, sendJson, readBody, notify, password, accounts }) {
+const IP_RE = /^(\d{1,3}\.){3}\d{1,3}$|^[0-9a-f:.]{2,45}$/i;
+
+function createAdminApi({ db, sendJson, readBody, notify, password, accounts, shield }) {
   const sessions = new Map();           // token -> muddati (ms)
   const tries = new Map();              // ip -> [vaqtlar]
 
@@ -83,10 +90,14 @@ function createAdminApi({ db, sendJson, readBody, notify, password, accounts }) 
     if (route === '/login') {
       if (req.method !== 'POST') return sendJson(res, 405, { error: 'method' });
       const ip = clientIp(req);
-      if (tooMany(ip)) return sendJson(res, 429, { error: 'rate_limited' });
+      if (tooMany(ip)) { if (shield) shield.report(ip, 'rate_limited', 'admin_login'); return sendJson(res, 429, { error: 'rate_limited' }); }
       const body = await jsonBody(req);
-      const ok = body && typeof body.password === 'string' && crypto.timingSafeEqual(hash(body.password), passHash);
-      if (!ok) { tries.get(ip).push(Date.now()); return sendJson(res, 401, { error: 'bad_password' }); }
+      const ok = body && typeof body.password === 'string' && body.password.length <= 256 && crypto.timingSafeEqual(hash(body.password), passHash);
+      if (!ok) {
+        tries.get(ip).push(Date.now());
+        if (shield) shield.report(ip, 'auth_fail', 'admin');
+        return sendJson(res, 401, { error: 'bad_password' });
+      }
       const tok = crypto.randomBytes(32).toString('hex');
       sessions.set(tok, Date.now() + SESSION_MS);
       res.setHeader('Set-Cookie', cookie(tok, SESSION_MS / 1000));
@@ -119,6 +130,7 @@ function createAdminApi({ db, sendJson, readBody, notify, password, accounts }) 
       if (route === '/payments') return sendJson(res, 200, { payments: accounts.listPayments() });
       if (route === '/tariffs') return sendJson(res, 200, { tariffs: accounts.tariffs(false) });
       if (route === '/bookings') return sendJson(res, 200, { bookings: db.listAll(), today: today() });
+      if (route === '/security') return sendJson(res, 200, shield ? Object.assign(shield.view(), { you: clientIp(req) }) : { enabled: false, bans: [], events: [], watch: [] });
       if (route === '/history') {
         const h = db.history(url.searchParams.get('key') || '');
         return h ? sendJson(res, 200, { events: h }) : sendJson(res, 404, { error: 'not_found' });
@@ -144,11 +156,20 @@ function createAdminApi({ db, sendJson, readBody, notify, password, accounts }) 
         return sendJson(res, 200, typeof r === 'object' ? r : { ok: true });
       };
 
+      if (route === '/security/ban' || route === '/security/unban') {
+        const ip = typeof body.ip === 'string' ? body.ip.trim() : '';
+        if (!shield || !IP_RE.test(ip)) return sendJson(res, 400, { error: 'bad_ip' });
+        if (route === '/security/unban') return shield.unban(ip) ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'not_found' });
+        if (ip === clientIp(req)) return sendJson(res, 400, { error: 'self_ban' });          // o'zini bloklab qo'ymasin
+        const minutes = Math.max(1, Math.min(525600, Math.round(Number(body.minutes) || 1440)));
+        const r = shield.ban(ip, String(body.reason || 'admin').slice(0, 100), minutes, true);
+        return r ? sendJson(res, 200, r) : sendJson(res, 400, { error: 'exempt_ip' });
+      }
       if (route === '/agencies') {
-        const r = accounts.createAgency(body);
+        const r = accounts.createAgency(body, 'admin');
         return r.error ? sendJson(res, 400, r) : sendJson(res, 201, r);
       }
-      if (route === '/agencies/update') return done(accounts.updateAgency(id, body));
+      if (route === '/agencies/update') return done(accounts.updateAgency(id, body), 'bad_request');
       if (route === '/agencies/reset') { const pw = accounts.resetPassword(id); return done(pw && { password: pw }); }
       if (route === '/agencies/status') return done(accounts.setAgencyStatus(id, body.status));
       if (route === '/agencies/extend') {

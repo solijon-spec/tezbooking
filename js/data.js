@@ -123,8 +123,22 @@
   const HOTEL_BY_ID = {};
   HOTELS.forEach(h => { HOTEL_BY_ID[h.id] = h; });
 
-  // ---------- Uchish shaharlari: add — aviareysga qo'shimcha (USD) ----------
-  const FROM = [{ id: 'tas', add: 0, code: 'TAS' }, { id: 'skd', add: 35, code: 'SKD' }, { id: 'dyu', add: 55, code: 'DYU' }];
+  // ---------- Uchish shaharlari: add — aviareysga qo'shimcha (USD), reach — shu shahardan uchadigan operatorlar ulushi ----------
+  // Ro'yxat server/live/samo.js (FROM_RU) va server/live/validation.js (FROM_IDS) bilan bir xil
+  const FROM = [
+    { id: 'tas', add: 0, code: 'TAS', reach: 1 },
+    { id: 'skd', add: 35, code: 'SKD', reach: 0.7 },
+    { id: 'bhk', add: 45, code: 'BHK', reach: 0.45 },
+    { id: 'ugc', add: 55, code: 'UGC', reach: 0.4 },
+    { id: 'nma', add: 50, code: 'NMA', reach: 0.4 },
+    { id: 'feg', add: 50, code: 'FEG', reach: 0.4 },
+    { id: 'azn', add: 50, code: 'AZN', reach: 0.35 },
+    { id: 'tmj', add: 60, code: 'TMJ', reach: 0.3 },
+    { id: 'nvi', add: 55, code: 'NVI', reach: 0.3 },
+    { id: 'ksq', add: 55, code: 'KSQ', reach: 0.3 },
+    { id: 'ncu', add: 65, code: 'NCU', reach: 0.3 },
+    { id: 'dyu', add: 55, code: 'DYU', reach: 0.5 }
+  ];
   const HOME_TZ = 5; // Toshkent / Samarqand / Dushanbe: UTC+5
 
   // ---------- Aviachiptalar (demo) ----------
@@ -213,6 +227,25 @@
   const childHotelF = (age) => (age < 2 ? 0 : age < 12 ? 0.5 : 1);
   const childFlightF = (age) => (age < 2 ? 0.1 : age < 12 ? 0.75 : 1);
 
+  // ---------- Demo: paket ichidagi reys (uchish vaqti, reys raqami, chipta narxi) ----------
+  // Charter — operatorning blok reysi; GDS — oddiy muntazam reys (chipta GDS orqali, narxi alohida ko'rinadi)
+  function demoTicket(country, from, o, dateIso, nights, gds, price) {
+    const ap = AIRPORTS[country];
+    if (!ap) return null;
+    const seed = country + from.id + o.id + (gds ? 'g' : 'c');
+    const al = AIRLINES[Math.floor(rnd(seed + 'al') * AIRLINES.length)];
+    const dur = Math.round(ap.hrs * 60 / 5) * 5 + (gds && rnd(seed + 'tr') < 0.5 ? 5 * Math.round((90 + rnd(seed + 'tw') * 150) / 5) : 0);
+    const dep = 5 * Math.floor(rnd(seed + dateIso + 'd') * 288);
+    const arr = (((dep + dur + Math.round((ap.tz - HOME_TZ) * 60)) % 1440) + 1440) % 1440;
+    const bdep = 5 * Math.floor(rnd(seed + date.addDays(dateIso, nights) + 'b') * 288);
+    const barr = (((bdep + dur + Math.round((HOME_TZ - ap.tz) * 60)) % 1440) + 1440) % 1440;
+    const num = 100 + Math.floor(rnd(seed + 'no') * 800) * 2;
+    return {
+      price, airline: al.name, no: al.code + ' ' + num, dep, arr, dur, fromCode: from.code, toCode: ap.code,
+      back: { no: al.code + ' ' + (num + 1), dep: bdep, arr: barr }
+    };
+  }
+
   // ---------- Bitta mehmonxona uchun barcha operatorlarning takliflari ----------
   // q = { from, nights, adults, childAges: [yosh, ...], rooms }
   function offersFor(h, q, dateIso) {
@@ -224,8 +257,10 @@
     const mealOpts = h.stars === 5 ? ['AI', 'UAI'] : h.stars === 4 ? ['HB', 'AI'] : ['BB', 'HB'];
     const dow = date.parse(dateIso).getUTCDay();
     const dateF = (dow === 5 || dow === 6 ? 1.06 : 1) * (0.95 + 0.1 * rnd(dateIso + c.id));
-    // Shu yo'nalishda ishlaydigan operatorlar; har bir mehmonxonani ulardan ~4–6 tasi sotadi
-    const serve = OPS.filter(o => (!o.countries || o.countries.indexOf(h.country) >= 0) && (q.noFlight || !o.hotelOnly));
+    // Shu yo'nalishda ishlaydigan operatorlar; har bir mehmonxonani ulardan ~4–6 tasi sotadi.
+    // Viloyat shaharlaridan (Samarqand, Buxoro, ...) charter kamroq — u yerdan faqat ayrim operatorlar uchadi
+    const serve = OPS.filter(o => (!o.countries || o.countries.indexOf(h.country) >= 0) && (q.noFlight || !o.hotelOnly) &&
+      (q.noFlight || from.reach >= 1 || rnd(o.id + from.id + h.country) < from.reach));
     let ops = serve.filter(o => rnd(h.id + o.id) < (o.countries ? 0.8 : 0.27));
     if (ops.length < 3) ops = serve.slice().sort((a, b) => rnd(h.id + a.id + 's') - rnd(h.id + b.id + 's')).slice(0, 3);
     const pax = q.adults + ages.reduce((s, a) => s + childHotelF(a), 0);
@@ -236,16 +271,27 @@
       const room = ROOMS[Math.min(2, Math.floor(rnd(h.id + o.id + 'r') * 2.4))];
       const of = o.f * (0.95 + 0.1 * rnd(h.id + o.id + dateIso));
       const hotelPart = base * q.nights * pax * MEALS[meal].f * room.f * roomsF;
-      // q.noFlight — faqat mehmonxona (Mehmonxonalar bo'limi): aviareys narxga qo'shilmaydi
-      const flight = q.noFlight ? 0 : (c.flight + from.add) * fpax;
-      const price = Math.round((hotelPart + flight) * dateF * of / 5) * 5;
+      // Paket = mehmonxona + aviachipta. GDS paket — oddiy (muntazam) reys, chipta GDS orqali: narxi biroz yuqori
+      const gds = !q.noFlight && rnd(h.id + o.id + 'g') < 0.3;
+      // q.noFlight — faqat mehmonxona (Mehmonxonalar bo'limi): mehmonxona tur paket ichidan olinadi (paket − chipta)
+      const flight = q.noFlight ? 0 : (c.flight + from.add) * fpax * (gds ? 1.12 : 1);
+      const k = dateF * of;
+      const price = Math.round((hotelPart + flight) * k / 5) * 5;
       const ra = rnd(h.id + o.id + dateIso + 'a');
       const avail = ra < 0.62 ? 'ok' : ra < 0.82 ? 'few' : ra < 0.94 ? 'req' : 'stop';
       const rf = rnd(h.id + o.id + dateIso + 'f');
       const seats = rf < 0.75 ? 'ok' : rf < 0.93 ? 'few' : 'none';
       const instant = rnd(h.id + o.id + 'i') < 0.55;
       const key = [h.id, o.id, dateIso, q.nights, q.adults, ages.join('.'), rooms, q.noFlight ? 'H' : q.from].join('|');
-      return { key, op: o, meal, room: room.id, price, avail, seats, instant };
+      const offer = { key, op: o, meal, room: room.id, price, avail, seats, instant, gds };
+      // Mehmonxonalar bo'limi: tur operatorlarning mehmonxonasi — tur paket ichidan; RezLive kabi faqat mehmonxona sotuvchilar — o'zi
+      if (q.noFlight) { if (!o.hotelOnly) offer.fromTour = true; }
+      else {
+        const tp = Math.round(flight * k / 5) * 5;
+        offer.ticket = demoTicket(h.country, from, o, dateIso, q.nights, gds, tp);
+        offer.hotelPrice = price - tp;
+      }
+      return offer;
     // Sotilganlar umuman qaytarilmaydi: sotuvi to'xtagan, reysda joy qolmagan (tur uchun), sotilib ketgan yoki bron qilingan
     }).filter(o => o.avail !== 'stop' && (q.noFlight || o.seats !== 'none') && !isGone(o.key));
   }
@@ -407,7 +453,14 @@
       const prev = list.find(o => o.key === key);
       if (prev && prev.price <= r.price) return;
       const offer = { key, op: OP_BY_ID[r.opId], meal: r.meal, mealRaw: r.mealRaw, room: r.room || 'std', price: r.price,
-        avail: r.avail === 'ok' || r.avail === 'few' ? r.avail : 'req', seats: r.seats === 'none' ? 'few' : r.seats, instant: r.avail === 'ok', tour: r.tour, live: true };
+        avail: r.avail === 'ok' || r.avail === 'few' ? r.avail : 'req', seats: r.seats === 'none' ? 'few' : r.seats, instant: r.avail === 'ok', tour: r.tour, live: true,
+        // Paket tarkibi (server/live): reys va chipta narxi, mehmonxona ≈ paket − chipta; GDS paket; tur paket ichidan olingan mehmonxona
+        gds: !!r.gds, fromTour: !!r.fromTour, withFlight: !!r.withFlight,
+        // Uchish vaqti tur qatorining o'zidan (operator javobi); sana — reys sanasi (tunda uchsa kirish kunidan farq qilishi mumkin)
+        dep: typeof r.dep === 'number' ? r.dep : null, depDate: r.depDate || null, fromCode: r.fromCode || '', toCode: r.toCode || '',
+        ticket: r.ticket && r.ticket.price > 0 ? r.ticket : null,
+        hotelPrice: r.hotelPrice > 0 ? Math.round(r.hotelPrice) : null,
+        packagePrice: r.packagePrice > 0 ? r.packagePrice : null };
       if (prev) list[list.indexOf(prev)] = offer; else list.push(offer);
     });
     live[sig] = entry;
@@ -465,7 +518,7 @@
 
   global.TB = { OPS, COUNTRIES, REGIONS, HOTELS, HOTEL_BY_ID, FROM, MEALS, ROOMS, AIRLINES, AIRPORTS, byId, UZS_RATE, date,
     offersFor: (h, q, dateIso) => (h.live ? liveOffersFor(h, q, dateIso) : offersFor(h, q, dateIso)),
-    hotFor, flightsFor, isGone, hotelInfo, setBooked, setClock: (fn) => { now = fn; },
+    hotFor, flightsFor, isGone, hotelInfo, setBooked, setClock: (fn) => { now = fn; }, OP_BY_ID,
     live: { set: setLive, entry: liveEntry, hotels: liveHotels, sig: liveSig,
       setFlights: setLiveFlights, flightEntry: liveFEntry, flights: liveFlights, fsig: liveFSig } };
 })(window);

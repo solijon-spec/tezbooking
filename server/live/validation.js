@@ -1,6 +1,8 @@
 'use strict';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Jo'nash shaharlari: Toshkent, Samarqand, Buxoro, Urganch, Namangan, Farg'ona, Andijon, Termiz, Navoiy, Qarshi, Nukus, Dushanbe
+const FROM_IDS = ['tas', 'skd', 'bhk', 'ugc', 'nma', 'feg', 'azn', 'tmj', 'nvi', 'ksq', 'ncu', 'dyu'];
 
 function validDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
@@ -51,7 +53,7 @@ function parseLiveQuery(kind, url, { countries, now = Date.now() }) {
   const fromValues = params.getAll('from');
   if (fromValues.length > 1) return null;
   const from = fromValues.length ? fromValues[0] : 'tas';
-  if (!['tas', 'skd', 'dyu'].includes(from)) return null;
+  if (!FROM_IDS.includes(from)) return null;
 
   if (kind === 'flights') {
     const toValues = params.getAll('to');
@@ -72,4 +74,4 @@ function parseLiveQuery(kind, url, { countries, now = Date.now() }) {
   return { country: countryValues[0], date, nights, adults, childAges, from, window };
 }
 
-module.exports = { validDate, parseLiveQuery };
+module.exports = { validDate, parseLiveQuery, FROM_IDS };

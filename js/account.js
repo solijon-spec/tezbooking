@@ -13,7 +13,7 @@
 (function (global) {
   'use strict';
 
-  const acc = { available: false, loggedIn: false, agency: null, pending: [], tariffs: [], mode: 'manual' };
+  const acc = { available: false, loggedIn: false, agency: null, pending: [], tariffs: [], mode: 'manual', register: false, markupDefault: 10 };
   const listeners = [];
   let modal = null;
 
@@ -53,7 +53,11 @@
     const s = sync();
     if (!s || !s.online() || !s.sameOrigin()) return;
     acc.available = true;
-    try { const r = await s.request('/api/tariffs'); acc.tariffs = r.tariffs || []; acc.mode = r.mode; } catch (e) { /* keyin */ }
+    try {
+      const r = await s.request('/api/tariffs');
+      acc.tariffs = r.tariffs || []; acc.mode = r.mode; acc.register = !!r.register;
+      if (typeof r.markupDefault === 'number') acc.markupDefault = r.markupDefault;
+    } catch (e) { /* keyin */ }
     try { apply(await s.request('/api/agency/me')); } catch (e) { apply(null); }
     changed();
     // Admin to'lovni tasdiqlasa yoki firmani bloklasa — darhol ko'rinadi
@@ -110,8 +114,52 @@
         <label><span class="label">${esc(t('acc_pass'))}</span><input class="input" name="password" type="password" autocomplete="current-password" required></label>
         <p class="acc-error" role="alert">${esc(error || '')}</p>
         <button class="btn btn-dark acc-wide" type="submit">${esc(t('acc_login'))}</button>
-      </form>`;
+      </form>
+      ${acc.register ? `<p class="acc-switch"><button type="button" class="btn-link" data-acc="to-register">${esc(t('acc_to_register'))}</button></p>` : ''}`;
     modal.body.querySelector('input[name=login]').focus();
+  }
+
+  // Ro'yxatdan o'tish: firma nomi, telefon, login, parol va firma oladigan foiz (ustama)
+  function drawRegister(error, values) {
+    openModal('register');
+    const v = values || {};
+    const val = (k, d) => esc(v[k] != null ? v[k] : (d == null ? '' : d));
+    modal.body.innerHTML = `
+      ${closeBtn()}
+      <h2 id="acc-title" class="acc-h">${esc(t('acc_reg_title'))}</h2>
+      <p class="muted">${esc(t('acc_reg_text'))}</p>
+      <form class="acc-form" data-acc-form="register" novalidate>
+        <label><span class="label">${esc(t('acc_name'))}</span><input class="input" name="name" maxlength="120" autocomplete="organization" required value="${val('name')}"></label>
+        <label><span class="label">${esc(t('acc_phone'))}</span><input class="input" name="phone" type="tel" maxlength="40" autocomplete="tel" placeholder="+998 90 123 45 67" required value="${val('phone')}"></label>
+        <label><span class="label">${esc(t('acc_contact'))}</span><input class="input" name="contact" maxlength="120" autocomplete="name" value="${val('contact')}"></label>
+        <label><span class="label">${esc(t('acc_markup'))}</span>
+          <span class="acc-markup-row"><input class="input" name="markup" type="number" min="0" max="50" step="0.5" inputmode="decimal" required value="${val('markup', acc.markupDefault)}"><b>%</b></span>
+          <span class="hint">${esc(t('acc_markup_hint'))}</span></label>
+        <label><span class="label">${esc(t('acc_login_new'))}</span><input class="input" name="login" maxlength="32" autocomplete="username" autocapitalize="off" spellcheck="false" required value="${val('login')}"></label>
+        <label><span class="label">${esc(t('acc_pass'))}</span><input class="input" name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
+          <span class="hint">${esc(t('acc_pass_hint'))}</span></label>
+        <label class="acc-hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
+        <p class="acc-error" role="alert">${esc(error || '')}</p>
+        <button class="btn btn-accent acc-wide" type="submit">${esc(t('acc_reg_btn'))}</button>
+      </form>
+      <p class="acc-switch"><button type="button" class="btn-link" data-acc="to-login">${esc(t('acc_to_login'))}</button></p>`;
+    modal.body.querySelector('input[name=name]').focus();
+  }
+
+  // Tariflar oynasidagi qo'shimcha: firma foizi va Telegram bot kodi
+  function drawExtras(a) {
+    return `
+      <form class="acc-form acc-tg" data-acc-form="markup" novalidate>
+        <label><span class="label">${esc(t('acc_markup_now'))}</span>
+          <span class="acc-markup-row"><input class="input" name="markup" type="number" min="0" max="50" step="0.5" inputmode="decimal" value="${esc(a.markup != null ? a.markup : acc.markupDefault)}"><b>%</b>
+          <button class="btn btn-sm" type="submit">${esc(t('acc_markup_save'))}</button></span>
+          <span class="hint">${esc(t('acc_markup_hint'))}</span></label>
+      </form>
+      <div class="acc-tg">
+        <span class="label">${esc(t('acc_tg_title'))}</span>
+        <div class="acc-tg-code">${acc.tgCode ? esc(t('acc_tg_code', { c: acc.tgCode })) : ''}</div>
+        <button type="button" class="btn btn-sm" data-acc="tg-code">${esc(t('acc_tg_btn'))}</button>
+      </div>`;
   }
 
   function drawPlans() {
@@ -144,7 +192,8 @@
           <button type="button" class="btn ${isBest ? 'btn-accent' : 'btn-dark'} acc-wide" data-acc="buy" data-id="${esc(x.id)}">${esc(t('plan_buy'))}</button>
         </div>`;
       }).join('')}</div>
-      ${acc.mode === 'demo' ? `<p class="hint acc-demo">${esc(t('pay_demo_note'))}</p>` : ''}`;
+      ${acc.mode === 'demo' ? `<p class="hint acc-demo">${esc(t('pay_demo_note'))}</p>` : ''}
+      ${drawExtras(a)}`;
     const first = modal.body.querySelector('[data-acc=buy]');
     if (first && !modal.root.contains(document.activeElement)) first.focus();
   }
@@ -165,6 +214,19 @@
     const b = e.target.closest('[data-acc]'); if (!b) return;
     const what = b.dataset.acc;
     if (what === 'close') return close();
+    if (what === 'to-register') return drawRegister();
+    if (what === 'to-login') return drawLogin();
+    if (what === 'tg-code') {
+      b.disabled = true;
+      try {
+        const r = await sync().post('/api/agency/telegram-code', {});
+        acc.tgCode = r.code;
+        const box = modal && modal.body.querySelector('.acc-tg-code');
+        if (box) box.textContent = t('acc_tg_code', { c: r.code });
+      } catch (err) { changed(t('acc_offline')); }
+      b.disabled = false;
+      return;
+    }
     if (what === 'logout') {
       try { await sync().post('/api/agency/logout', {}); } catch (err) { /* baribir */ }
       apply(null); close(); changed(t('n_logged_out'));
@@ -187,6 +249,8 @@
 
   async function onSubmit(e) {
     const f = e.target;
+    if (f.dataset.accForm === 'register') { e.preventDefault(); return submitRegister(f); }
+    if (f.dataset.accForm === 'markup') { e.preventDefault(); return submitMarkup(f); }
     if (f.dataset.accForm !== 'login') return;
     e.preventDefault();
     const login = f.login.value.trim(), password = f.password.value;
@@ -203,6 +267,49 @@
       const inp = modal && modal.body.querySelector('input[name=login]');
       if (inp) inp.value = login;
     }
+  }
+
+  const markupOf = (s) => { const n = Number(String(s || '').replace(',', '.')); return isFinite(n) && n >= 0 && n <= 50 ? Math.round(n * 2) / 2 : null; };
+
+  async function submitRegister(f) {
+    const v = {
+      name: f.name.value.trim(), phone: f.phone.value.trim(), contact: f.contact.value.trim(),
+      markup: f.markup.value, login: f.login.value.trim().toLowerCase(), password: f.password.value, website: f.website.value
+    };
+    const keep = Object.assign({}, v, { password: '' });
+    // Brauzerda oldindan tekshirish (server baribir qayta tekshiradi)
+    if (v.name.length < 2) return drawRegister(t('acc_err_bad_name'), keep);
+    if (v.phone.replace(/\D/g, '').length < 9) return drawRegister(t('acc_err_bad_phone'), keep);
+    if (markupOf(v.markup) === null) return drawRegister(t('acc_err_bad_markup'), keep);
+    if (!/^[a-z0-9._-]{3,32}$/.test(v.login)) return drawRegister(t('acc_err_bad_login'), keep);
+    if (v.password.length < 8 || !/\d/.test(v.password) || !/[^\d\W_]/.test(v.password)) return drawRegister(t('acc_err_weak_password'), keep);
+    f.querySelector('[type=submit]').disabled = true;
+    try {
+      const me = await sync().post('/api/agency/register', Object.assign({}, v, { markup: markupOf(v.markup) }));
+      apply(me);
+      changed(t('n_registered', { m: acc.agency.markup }));
+      drawPlans();
+    } catch (err) {
+      const code = err.data && err.data.error;
+      const msg = err.status === 429 ? t('acc_many') : err.status === 403 ? t('acc_err_closed')
+        : code && t('acc_err_' + code) !== 'acc_err_' + code ? t('acc_err_' + code) : t('acc_offline');
+      drawRegister(msg, keep);
+    }
+  }
+
+  async function submitMarkup(f) {
+    const m = markupOf(f.markup.value);
+    if (m === null) { changed(t('acc_err_bad_markup')); return; }
+    const btn = f.querySelector('[type=submit]');
+    btn.disabled = true;
+    try {
+      apply(await sync().post('/api/agency/markup', { markup: m }));
+      changed(t('n_markup_saved', { m }));
+    } catch (err) {
+      if (err.status === 401) { apply(null); changed(); drawLogin(); return; }
+      changed(t('acc_offline'));
+    }
+    btn.disabled = false;
   }
 
   global.TezAccount = {

@@ -21,13 +21,75 @@ Demo'da «sotilib ketish» kun davomida tasodifiy simulyatsiya qilinadi (`js/dat
 
 Uchala bo'limdan ham variantni **mijozga taklif**ga qo'shish mumkin — bitta taklifda tur, mehmonxona va aviachipta aralash bo'lishi mumkin.
 
+## Paket tarkibi, uchish shahri va GDS (2026-11-24)
+
+- **Qayerdan uchish:** Toshkent, Samarqand, Buxoro, Urganch, Namangan, Farg'ona, Andijon, Termiz, Navoiy, Qarshi, Nukus, Dushanbe
+  (ro'yxat `js/data.js` → `FROM`, `server/live/samo.js` → `FROM_RU`, `server/live/validation.js` → `FROM_IDS` — uchalasi bir xil bo'lsin).
+  Har bir tur kartasida, «Batafsil» oynasida va mijozga taklif matnida: «Toshkentdan uchish (TAS) · 1 dek, 15:30».
+- **Uchish sanasi va soati** — operator javobidagi tur qatorining o'zidan (`06.12.2026 10:25`, `server/live/samo.js` → `dep`, `depDate`),
+  yo'nalish kodi ham (`TAS-2-SSH`). 2026-11-24 dagi sinovda Misr bo'yicha 826 turning hammasida vaqt bor edi; GDS paketlarda vaqt berilmaydi.
+- **Mehmonxona tur paket ichidan:** «Mehmonxonalar» bo'limida operatorda «faqat mehmonxona» qidiruvi bo'lmasa yoki bo'sh bo'lsa,
+  mehmonxona uning tur paketidan olinadi va «Tur paket ichidan · narx aviareys bilan» deb ko'rsatiladi
+  (sinovda BAA bo'yicha Kazunion va FUN&SUN dan 500 ta mehmonxona shunday olindi). Chipta narxi ma'lum bo'lsa — narx = paket − chipta.
+- **Chipta narxi:** charter paketlarda operatorlar chipta narxini ochiq bermaydi (na tur qatorida, na «Состав пакета» da), alohida
+  aviachipta sahifalari ham charter reys qaytarmadi. Shu sabab `LIVE_TOUR_TICKETS` sukut bo'yicha o'chiq (operatorlarga ortiqcha so'rov
+  yubormaslik uchun); yoqilsa (`=1`) server operatorning chipta sahifasidan mos reysni topishga urinadi. Demo'da chipta va mehmonxona
+  narxi alohida ko'rsatiladi; «Chipta narxi ko'rsatilgan» filtri faqat natijalarda shunday takliflar bo'lsa chiqadi.
+- **GDS paketlar** (muntazam reys, chipta GDS orqali): qator klassi `freight-external`, tur nomida `GDS` yoki Prestige'dagi `dynamic`.
+  Sinovda: Turkiya (Easybooking) va Samarqanddan BAA (Easybooking, Kompas) — hammasi GDS. Filtrlar → «Paket» → «Faqat GDS paketlar».
+- **Firma foizi (ustama):** tur firma ro'yxatdan o'tayotganda «Necha foiz olasiz?» deb so'raladi (0–50 %). Mijoz narxi = netto + shu foiz;
+  netto rejimda har bir narx ostida «Mijozga: $1 195 (+10%)» ko'rinadi. Foizni tariflar oynasida yoki Telegram botda o'zgartirish mumkin,
+  admin ham firmani tahrirlashda o'zgartira oladi.
+- **Ro'yxatdan o'tish:** «Kirish» → «Ro'yxatdan o'ting» (firma nomi, telefon, login, parol — kamida 8 belgi, harf va raqam, foiz).
+  IP'dan soatiga 3 ta, bot tuzog'i (yashirin maydon) bor. Yopish: `AGENCY_SELF_REGISTER=0`.
+
+## Telegram bot
+
+`server/telegram/` — tur agentliklar uchun kanal postlari (o'zbek va rus tillarida).
+
+1. Telegram'da **@BotFather** → `/newbot` → tokenni `.env` ga yozing: `TELEGRAM_BOT_TOKEN=...`, so'ng `npm start`.
+2. Firma saytda **Kirish → tariflar oynasi → «Botni ulash kodi»** ni bosadi va botga `/link 123456` yuboradi (kod 10 daqiqa, bir marta).
+3. Botda: **📝 Post yaratish** → davlat → tunlar → qachon (yaqin 2 hafta / keyingi oy / aniq sana) → bot operatorlarning haqiqiy
+   narxlaridan eng arzon 8 ta turni ko'rsatadi → birini yoki **«Top-5 bitta postda»** ni tanlang.
+4. Post: mehmonxona va yulduzlar, qayerdan va qachon uchish (sana, hafta kuni, soat), necha kecha / kun, ovqat, xona, narx
+   (firma foizi bilan), so'mda, telefon, firma nomi, heshteglar va rasm (yo'nalish rasmi yoki **🖼 O'z rasmim**).
+5. **⚙️ Sozlamalar:** bot tili, post tili (UZ / RU / ikkalasi), uchish shahri, kanal, telefon, ustama foizi.
+   Kanal ulash: botni kanalga **admin** qiling («Post yozish» huquqi) va `@kanal` ni yuboring — bot o'zi va siz admin ekaningizni tekshiradi.
+6. **📤 Kanalga joylash** — bir tugma bilan (kuniga 40 tagacha).
+
+Narxlar faqat haqiqiy (server/live, 10 daqiqa kesh — sayt bilan umumiy). Operatorlar javob bermasa, bot buni ochiq aytadi, o'ylab topilgan
+tur chiqarmaydi. `npm run demo` yoki `TELEGRAM_DEMO=1` da namunaviy narxlar ishlatiladi va postning boshida **DEMO** deb yoziladi.
+Bot long polling bilan ishlaydi — serverga tashqaridan webhook manzil ochish shart emas.
+
+## Xavfsizlik qalqoni (server/security.js)
+
+Har bir so'rov eng avval qalqondan o'tadi (sayt va admin porti):
+
+| Nima | Qanday javob |
+|---|---|
+| Skaner manzillari: `/.env`, `/.git`, `/wp-admin`, `*.php`, `/phpmyadmin`, `/server/`, `/data/` … | darhol IP blok |
+| URL'da SQL-injection, XSS, path traversal, `${jndi:` … naqshlari | darhol IP blok |
+| Noto'g'ri parol (admin, tur firma, owner) | 5 ta xato ≈ blok; tur firma login'iga 15 daqiqada 10 xato — login yopiladi |
+| Boshqa saytdan cookie bilan POST (CSRF, `Origin` mos emas) | 403 va ball |
+| Bitta IP'dan daqiqasiga 600 dan ko'p so'rov | 10 daqiqa blok |
+| Ko'p 404 (rasm/css/js dan tashqari) | ball yig'iladi |
+
+Blok muddati oshib boradi: 15 daq → 1 soat → 6 soat → 24 soat → 7 kun. Bloklar va hodisalar bazada saqlanadi.
+**Admin panel → Xavfsizlik:** bloklangan IP'lar, kuzatuvdagilar, oxirgi hodisalar, qo'lda bloklash / blokdan chiqarish.
+Lokal (127.0.0.1) va `SHIELD_ALLOW_IPS` dagi IP'lar hech qachon bloklanmaydi.
+
+Qo'shimcha himoyalar: barcha sahifalarda CSP, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HTTPS'da HSTS;
+sekin so'rovlar (slowloris) uchun vaqt chegaralari; jonli ulanishlar (SSE) IP boshiga 8 ta; production'da `null`/localhost CORS yopiq;
+AI chat production'da faqat kirgan firmalarga (`CHAT_REQUIRE_LOGIN`); parol o'zgarsa boshqa qurilmalardagi sessiyalar yopiladi;
+xotiradagi urinishlar jadvallari muntazam tozalanadi.
+
 ## Haqiqiy narxlar (tur operatorlardan)
 
 "Turlar" bo'limida server (`npm start`) ishlayotganda narxlar **o'ylab topilmaydi** — ular tur operatorlarning
 o'z qidiruvidan olinadi (`server/live/`). Ko'p operatorlar SAMO-Tour tizimida ishlaydi va "Поиск тура" sahifasi
 login'siz ochiq: server o'sha sahifa brauzerga beradigan so'rovni yuboradi, javobdagi narxlarni o'qiydi va saytga beradi.
 
-- Toshkent (Samarqand, Dushanbe) dan jo'nash, tanlangan kun ±3 kun, aniq tunlar soni; narx USD, 2 kishi uchun jami.
+- Toshkent, Samarqand, Buxoro, Urganch, Namangan, Farg'ona, Andijon, Termiz, Navoiy, Qarshi, Nukus yoki Dushanbedan jo'nash (operator shu shahardan uchsa), tanlangan kun ±3 kun, aniq tunlar soni; narx USD, 2 kishi uchun jami.
 - Natija 10 daqiqa keshda turadi (operator saytlariga ortiqcha yuk tushmasin). Bir xil mehmonxona turli operatorlarda bo'lsa — bitta kartada.
 - Hozir ochiq qidiruvdan narx beradigan operatorlar: Prestige, Kazunion, Selfie Travel, Savtour, FUN&SUN, FlyKhiva, Malva, Easybooking, Kompas (yo'nalishga qarab).
 - Ochiq qidiruvi yo'q yoki yopiq: ANEX, Crystal Bay (Toshkentdan emas), Centrum, Aqua, Vietratour (Toshkentdan emas), Pegas, Asialuxe, RezLive va boshqalar —
@@ -93,12 +155,14 @@ Hech narsa o'rnatish shart emas.
 | `server/db.js` | Ma'lumotlar bazasi (SQLite): bronlar va ularning tarixi |
 | `server/bookings.js` | Bronlar API'si va jonli yangilanishlar |
 | `server/admin.js` | Admin panel API'si: parol bilan kirish, bronlar, firmalar, to'lovlar, tariflar |
-| `server/accounts.js` | Tur firmalar (login/parol), tariflar, to'lovlar |
+| `server/accounts.js` | Tur firmalar (login/parol, o'zi ro'yxatdan o'tish, ustama foizi), tariflar, to'lovlar |
+| `server/security.js` | Xavfsizlik qalqoni: hujumlarni aniqlash, IP bloklash, xavfsizlik sarlavhalari |
+| `server/telegram/` | Telegram bot: `bot.js` (suhbat), `post.js` (post matni UZ/RU), `api.js` (Telegram API) |
 | `js/account.js` | Saytda: tur firma kirishi, tariflar oynasi, to'lov |
 | `js/demo-api.js`, `js/demo-seed.js` | Demo rejim: brauzerdagi soxta server va namunaviy ma'lumotlar |
 | `server/demo.js` | Lokal demo: `npm run demo` (alohida baza, 3100/3101 portlar) |
 | `admin.html`, `js/admin.js`, `css/admin.css` | Admin panel sahifasi (`/admin`) |
-| `images/` | Sayt rasmlari (JPG, 960px): `country-<id>.jpg` — davlatlar, `hotel-resort-1..4` / `hotel-city-1..2` — mehmonxonalar (umumiy, AI bilan yaratilgan), `flight-plane.jpg` — aviachiptalar banneri. Logo: `logo.png` (asl, to'liq), `logo-horizontal.png` (sayt va admin sarlavhasi), `logo-mark.png` (belgi, 512px), `favicon-32.png`, `apple-touch-icon.png` |
+| `images/` | Sayt rasmlari (JPG, 960px): `country-<id>.jpg` — davlatlar, `hotel-resort-1..6` / `hotel-city-1..4` / `hotel-island-1` — mehmonxonalar; galereya uchun `hotel-beach-1..2`, `hotel-pool-1..2`, `hotel-aqua`, `hotel-spa`, `hotel-restaurant`, `hotel-lobby`, `room-std/sup/dlx` (hammasi umumiy, AI bilan yaratilgan; galereya `js/app.js` → `hotelGallery()` da mehmonxona qulayliklariga qarab tuziladi), `flight-plane.jpg` — aviachiptalar banneri. Logo: `logo.png` (asl, to'liq), `logo-horizontal.png` (sayt va admin sarlavhasi), `logo-mark.png` (belgi, 512px), `favicon-32.png`, `apple-touch-icon.png` |
 | `package.json` | `npm start` buyrug'i (qo'shimcha paket yo'q) |
 | `.env.example` | Sozlamalar namunasi — undan `.env` faylini yasaysiz |
 

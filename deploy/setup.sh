@@ -63,6 +63,10 @@ COOKIE_SECURE=$([ -n "$DOMAIN" ] && echo 1 || echo 0)
 ADMIN_PASSWORD=$NEWPASS
 # AI yordamchi kerak bo'lsa, kalitni shu yerga yozing va: systemctl restart tezbooking
 ANTHROPIC_API_KEY=
+# Telegram bot (kanal postlari): @BotFather -> /newbot, tokenni yozing va: systemctl restart tezbooking
+TELEGRAM_BOT_TOKEN=
+# Xavfsizlik qalqoni hech qachon bloklamaydigan IP'lar (masalan, ofisingiz), vergul bilan
+SHIELD_ALLOW_IPS=
 EOF
 fi
 chown root:tezbooking "$ENVF"; chmod 640 "$ENVF"

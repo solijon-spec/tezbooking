@@ -31,6 +31,12 @@ va oxirida **admin parolini bir marta** ko'rsatadi (nusxa oling). Qayta ishga tu
 - **To'lov rejimi** serverda doim `manual` (demo rejim production'da ishlamaydi): firma to'lov so'raydi → pul tushganini ko'rib,
   Admin → To'lovlar → Tasdiqlash.
 - **AI yordamchi:** `sudo nano /etc/tezbooking.env` → `ANTHROPIC_API_KEY=...` → `sudo systemctl restart tezbooking`.
+  Serverda AI chat faqat kirgan tur firmalarga ochiq (`CHAT_REQUIRE_LOGIN=0` — hammaga).
+- **Telegram bot:** Telegram'da @BotFather → `/newbot` → tokenni `/etc/tezbooking.env` dagi `TELEGRAM_BOT_TOKEN=` ga yozing →
+  `sudo systemctl restart tezbooking`. Logda `Telegram bot: @nomi` chiqadi. Firmalar saytdan kod olib, botga `/link KOD` yuboradi.
+  (Avval o'rnatilgan serverda bu qator yo'q bo'lsa — qo'lda qo'shing.)
+- **Xavfsizlik:** Admin panel → Xavfsizlik bo'limida bloklangan IP'lar va hujum urinishlari ko'rinadi.
+  O'z ofisingiz IP'sini `SHIELD_ALLOW_IPS=` ga yozib qo'ying (xato parol terib o'zingizni bloklab qo'ymaslik uchun).
 - **Yangilash** (GitHub'ga yangi kod yuklagach): `cd ~/tezbooking && sudo bash deploy/update.sh`.
 
 ## Foydali buyruqlar
@@ -45,6 +51,8 @@ Bazani tiklash: `sudo systemctl stop tezbooking`, zaxira faylni `/var/lib/tezboo
 
 ## Xavfsizlik (qisqacha)
 - Server faqat `127.0.0.1` da tinglaydi; internetga faqat Caddy (80/443) chiqadi. Admin alohida manzilda, o'z paroli va urinishlar chegarasi bilan.
+- Xavfsizlik qalqoni (server ichida): skanerlar, SQL-injection/XSS urinishlari, ko'p xato parol, CSRF va so'rovlar oqimi — IP avtomatik bloklanadi
+  (15 daq → 7 kungacha). `TRUST_PROXY=1` (skript o'zi yozadi) bo'lishi shart — aks holda hamma bitta IP bo'lib ko'rinadi.
 - Parollar va kalitlar `/etc/tezbooking.env` da (faqat root va xizmat o'qiydi), GitHub'da emas.
 - Kod serverda faqat o'qiladi; xizmat faqat o'z ma'lumotlar papkasiga yoza oladi.
 - Admin parolini istalgan payt almashtirish: `/etc/tezbooking.env` → `ADMIN_PASSWORD` → `systemctl restart tezbooking`.

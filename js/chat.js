@@ -237,7 +237,7 @@
         signal: ctrl.signal
       });
       if (!resp.ok) {
-        reply.error = resp.status === 429 ? t('chat_limit') : resp.status === 503 ? t('chat_nokey') : resp.status === 413 ? t('chat_too_long', { n: MAX_LEN }) : t('chat_error');
+        reply.error = resp.status === 401 ? t('chat_login') : resp.status === 429 ? t('chat_limit') : resp.status === 503 ? t('chat_nokey') : resp.status === 413 ? t('chat_too_long', { n: MAX_LEN }) : t('chat_error');
         if (resp.status === 503) chat.status = 'nokey';
       } else {
         reply.refused = resp.headers.get('X-Refused') === '1';

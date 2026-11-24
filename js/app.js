@@ -18,7 +18,13 @@
   const sync = window.TezSync;                         // server bilan sinxronlash (js/sync.js), bo'lmasligi ham mumkin
 
   // ---------- Sozlamalar ----------
-  const MARKUP = 10;                                   // agentlik ustamasi, %
+  // Agentlik ustamasi, %: kirgan firmaning o'z foizi (ro'yxatdan o'tishda so'raladi), aks holda — 10 %
+  const DEFAULT_MARKUP = 10;
+  const markup = () => {
+    const A = window.TezAccount, i = A && A.info();
+    const m = i && i.loggedIn && i.agency ? Number(i.agency.markup) : NaN;
+    return isFinite(m) && m >= 0 && m <= 50 ? m : DEFAULT_MARKUP;
+  };
   const DEFAULT_MY = ['tr', 'ae', 'eg', 'ge', 'az', 'my'];
   const NIGHTS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14];
   const OPS_SHORT = 8;                                 // filtrda dastlab ko'rinadigan operatorlar soni
@@ -27,7 +33,7 @@
   const TOUR_PAGE = 30;                                // "Turlar bo'yicha": bir sahifada nechta tur
   // Qidiruv yoki filtr o'zgarsa — turlar ro'yxati yana boshidan (birinchi sahifa) ko'rsatiladi
   const LIST_KEYS = ['tab', 'dests', 'date', 'nights', 'from', 'adults', 'childAges', 'rooms', 'ops', 'stars', 'meals', 'cities',
-    'onlyAvail', 'instant', 'maxPrice', 'hotelQuery', 'sort', 'groupBy'];
+    'onlyAvail', 'instant', 'withTicket', 'gdsOnly', 'maxPrice', 'hotelQuery', 'sort', 'groupBy'];
   const ALL_IDS = D.COUNTRIES.map(c => c.id);
   const today = dt.localToday();
 
@@ -80,10 +86,13 @@
     lang: detectLang(),
     my: loadMy(),                 // agentlik ishlaydigan davlatlar
     dests: null,                  // qidiruvdagi davlatlar (null = birinchisi)
-    from: 'tas', date: dt.addDays(today, 7), nights: 7,
+    date: dt.addDays(today, 7), nights: 7,
     adults: 2, childAges: [], rooms: 1,
     ops: {}, stars: {}, meals: {}, cities: {},   // filtrlar: false = o'chirilgan
     onlyAvail: false, instant: false, maxPrice: null, hotelQuery: '',
+    withTicket: false, gdsOnly: false,   // paket filtrlari: chipta narxi ko'rsatilgan / faqat GDS
+    // Qayerdan uchish: oxirgi tanlangan shahar saqlanadi
+    from: (D.FROM.some(f => f.id === store.get('from', 'tas')) ? store.get('from', 'tas') : 'tas'),
     booked: loadBooked(),         // shu firmaning bronlari: [{ key, title, at }] — qidiruvda ko'rinmaydi, sanalari qizil
     taken: [],                    // boshqa firmalar bron qilgan takliflar (faqat kalit) — qidiruvda ko'rinmaydi
     undo: null,                   // oxirgi bron (xabardagi "Bekor qilish" tugmasi uchun)
@@ -95,6 +104,7 @@
     groupBy: store.get('groupBy', 'tour') === 'hotel' ? 'hotel' : 'tour',
     tourLimit: TOUR_PAGE,         // "Turlar bo'yicha" ro'yxatida nechta ko'rsatiladi
     detail: null, detailKey: null, // "Batafsil" oynasi: mehmonxona id va tanlangan taklif kaliti
+    photo: 0,                     // "Batafsil" galereyasida ko'rinayotgan rasm
     offer: Array.isArray(savedOffer) ? savedOffer.filter(validOffer) : [],
     panel: false, note: '', settings: false, cq: '', menuOpen: false, filtersOpen: false
   };
@@ -115,6 +125,7 @@
     if ('mode' in patch) store.set('mode', state.mode);
     if ('offer' in patch) store.set('offer', state.offer);
     if ('tab' in patch) store.set('tab', state.tab);
+    if ('from' in patch) store.set('from', state.from);
     if ('booked' in patch) store.set('booked', state.booked);
     if ('booked' in patch || 'taken' in patch) D.setBooked(state.booked.map(b => b.key).concat(state.taken));
     render();
@@ -155,8 +166,32 @@
 
   // ---------- Yordamchilar ----------
   const esc = (v) => String(v).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-  const clientP = (v) => Math.round(v * (1 + MARKUP / 100) / 5) * 5;
+  const clientP = (v) => Math.round(v * (1 + markup() / 100) / 5) * 5;
   const shown = (v) => (state.mode === 'client' ? clientP(v) : v);
+  const mPct = () => String(markup()).replace('.', state.lang === 'en' ? '.' : ',');
+  // Netto rejimda narx ostida: mijozga qancha (firma foizi bilan). Mijoz rejimida — ko'rsatilmaydi (ekranni mijozga ko'rsatish mumkin)
+  const clientLine = (v) => (state.mode === 'net' ? t('client_line', { p: money(clientP(v)), m: mPct() }) : '');
+  // Uchish: "Toshkentdan uchish · 30 noy, 06:40"
+  function depLabel(fromId, dateIso, depMin) {
+    const f = fromForm(fromId) + ' (' + ((D.FROM.find(x => x.id === fromId) || D.FROM[0]).code) + ')';
+    return depMin != null ? t('dep_line_t', { from: f, d: fmtDay(dateIso), t: hm(depMin) }) : t('dep_line', { from: f });
+  }
+  // Paket tarkibi: aviachipta va mehmonxona (ma'lum bo'lsa)
+  // Uchish vaqti: operator chiptasidan yoki tur qatorining o'zidan
+  const depOf = (o) => (o && o.ticket && o.ticket.dep != null ? o.ticket.dep : o && typeof o.dep === 'number' ? o.dep : null);
+  function packageView(o) {
+    if (!o) return null;
+    const tk = o.ticket && o.ticket.price > 0 ? o.ticket : null;
+    const fromTour = !!o.fromTour && isHotels();
+    return {
+      gds: !!o.gds, charter: !o.gds && !!tk && !isHotels(), fromTour,
+      ticket: tk ? t('pk_ticket', { p: money(shown(tk.price)) }) : '',
+      hotel: tk && o.hotelPrice > 0 ? t('pk_hotel', { p: money(shown(o.hotelPrice)) }) : '',
+      withFlight: fromTour && !!o.withFlight ? t('pk_with_flight') : '',
+      fromTourHint: o.withFlight ? t('pk_with_flight_hint') : o.fromTour && o.packagePrice ? t('pk_from_tour_hint', { p: money(shown(o.packagePrice)) }) : t('pk_from_tour'),
+      dep: !isHotels() ? depLabel(state.from, o.depDate || state.date, depOf(o)) : ''
+    };
+  }
   const myList = () => ALL_IDS.filter(id => state.my.indexOf(id) >= 0);
   function destList() {
     const my = myList();
@@ -194,10 +229,37 @@
   // ---------- Rasmlar (images/ papkasi) ----------
   // Mehmonxonalar o'ylab topilgan, shuning uchun umumiy rasmlar: shahar mehmonxonasi yoki kurort (id bo'yicha tanlanadi)
   const CITY_HOTELS = ['tbilisi', 'baku', 'dubai', 'sharjah', 'kl', 'naftalan', 'gabala'];
+  const TROPICAL = ['th', 'vn', 'my', 'id', 'lk', 'mv'];
+  const RESORT_IMGS = 6, CITY_IMGS = 4;               // images/hotel-resort-1..6.jpg, hotel-city-1..4.jpg
   const countryPhoto = (id) => 'images/country-' + id + '.jpg';
+  const img = (name) => 'images/' + name + '.jpg';
+  const hsh = (s) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
   function hotelPhoto(h) {
-    const n = parseInt(h.id.replace(/\D/g, ''), 10) || 0;
-    return CITY_HOTELS.indexOf(h.city) >= 0 ? 'images/hotel-city-' + (n % 2 + 1) + '.jpg' : 'images/hotel-resort-' + (n % 4 + 1) + '.jpg';
+    const n = hsh(h.id);
+    if (h.country === 'mv' && n % 2) return img('hotel-island-1');
+    return CITY_HOTELS.indexOf(h.city) >= 0 ? img('hotel-city-' + (n % CITY_IMGS + 1)) : img('hotel-resort-' + (n % RESORT_IMGS + 1));
+  }
+  // Galereya: asosiy rasm + mehmonxonada bor qulayliklar (plyaj, basseyn, SPA...) + xonalar.
+  // Rasmlar umumiy (AI bilan yaratilgan, images/), mehmonxonaning o'ziniki emas. Jonli mehmonxonalarda — faqat asosiy rasm.
+  const ROOM_PHOTO = { std: 'room-std', sup: 'room-sup', dlx: 'room-dlx' };
+  function hotelGallery(h) {
+    const main = hotelPhoto(h);
+    const info = D.hotelInfo(h);
+    if (!info) return [{ src: main, cap: '' }];
+    const has = (id) => info.facilities.indexOf(id) >= 0;
+    const n = hsh(h.id);
+    const g = [{ src: main, cap: t('ph_hotel') }];
+    if (info.resort && h.stars === 5 && main !== img('hotel-resort-6')) g.push({ src: img('hotel-resort-6'), cap: t('ph_territory') });
+    if (has('beach') || (info.beach != null && info.beach <= 300)) {
+      g.push({ src: img(h.country === 'mv' ? 'hotel-island-1' : TROPICAL.indexOf(h.country) >= 0 ? 'hotel-beach-2' : 'hotel-beach-1'), cap: t('ph_beach') });
+    }
+    if (has('pool')) g.push({ src: img('hotel-pool-' + (n % 2 + 1)), cap: t('fac_pool') });
+    if (has('aqua')) g.push({ src: img('hotel-aqua'), cap: t('fac_aqua') });
+    if (has('spa') || has('ipool')) g.push({ src: img('hotel-spa'), cap: t(has('spa') ? 'fac_spa' : 'fac_ipool') });
+    g.push({ src: img('hotel-restaurant'), cap: t('fac_restaurant') });
+    if (h.stars >= 4) g.push({ src: img('hotel-lobby'), cap: t('ph_lobby') });
+    D.ROOMS.forEach(r => g.push({ src: img(ROOM_PHOTO[r.id]), cap: roomName(r.id) }));
+    return g.filter((x, i) => g.findIndex(y => y.src === x.src) === i);
   }
   // Aviachiptalar: tanlangan yo'nalish (agentlik davlatlaridan) va qaytish sanasi (har doim uchishdan keyin)
   function fDest() {
@@ -244,6 +306,9 @@
     if (state.meals[o.meal] === false) return false;
     if (state.onlyAvail && !(o.avail === 'ok' || o.avail === 'few')) return false;
     if (state.instant && !o.instant) return false;
+    // Paket filtrlari (faqat Turlar bo'limida): chipta narxi ko'rsatilgan / faqat GDS (muntazam reys) paketlar
+    if (!isHotels() && state.withTicket && !(o.ticket && o.ticket.price > 0)) return false;
+    if (!isHotels() && state.gdsOnly && !o.gds) return false;
     if (o.price > cap) return false;
     return true;
   }
@@ -274,7 +339,10 @@
     close: svg(18, '<path d="M6 6l12 12M18 6 6 18"></path>', 2.2),
     menu: svg(22, '<path d="M4 7h16M4 12h16M4 17h16"></path>', 2.2),
     sun: svg(18, '<circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"></path>', 2.2),
-    moon: svg(18, '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path>', 2.2)
+    moon: svg(18, '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path>', 2.2),
+    camera: svg(13, '<path d="M4 8h3l2-3h6l2 3h3v11H4z"></path><circle cx="12" cy="13" r="3.5"></circle>', 2.2),
+    prev: svg(22, '<path d="m15 5-7 7 7 7"></path>', 2.6),
+    next: svg(22, '<path d="m9 5 7 7-7 7"></path>', 2.6)
   };
   const theme = () => (window.TezTheme ? window.TezTheme.get() : 'light');
   // Mavzu almashsa (tugma yoki qurilma sozlamasi) — tugma belgisi yangilanadi
@@ -312,10 +380,12 @@
     }
     const h = D.HOTEL_BY_ID[x.hotelId], op = D.OPS.find(o => o.id === x.opId);
     const dates = fmtDay(x.date) + ' – ' + fmtDay(dt.addDays(x.date, x.nights)) + ' · ' + t('nights_n', { n: x.nights });
+    const depLine = kind === 'tour' && x.from ? depLabel(x.from, x.date, x.dep) : null;
     return {
       kind, title: h.name, stars: '★'.repeat(h.stars), photo: hotelPhoto(h),
-      lines: [cityName(h.city) + ', ' + countryName(h.country), dates + (kind === 'hotel' ? ' · ' + t('hotel_only') : ''),
-        mealLong(x.meal) + ' · ' + roomName(x.room) + ' · ' + guests],
+      lines: [cityName(h.city) + ', ' + countryName(h.country), dates + (kind === 'hotel' ? ' · ' + t('hotel_only') : '')]
+        .concat(depLine ? ['✈ ' + depLine] : [])
+        .concat([mealLong(x.meal) + ' · ' + roomName(x.room) + ' · ' + guests]),
       price: money(clientP(x.price)), net: money(x.price), op: op.name, priceNote: kind === 'hotel' ? 'ot_price_h' : 'ot_price'
     };
   }
@@ -550,7 +620,9 @@
 
     const hotels = list.map(r => {
       const h = r.h, best = r.best, c = D.byId[h.country];
-      const cheapLive = r.live[0], dearLive = r.live[r.live.length - 1];
+      // "Operatorlar farqi" faqat bir xil turdagi narxlar orasida: faqat mehmonxona narxini aviareysli paket narxi bilan solishtirmaymiz
+      const same = r.live.some(o => !o.withFlight) ? r.live.filter(o => !o.withFlight) : r.live;
+      const cheapLive = same[0], dearLive = same[same.length - 1];
       offerTotal += r.pass.length;
       r.pass.forEach(o => { opSet[o.op.id] = true; });
       const ordered = r.live.concat(r.pass.filter(o => !bookable(o)));
@@ -563,16 +635,17 @@
         bestKey: best.key, bestOp: best.op.name, bestPrice: money(shown(best.price)), canBook: bookable(best),
         bookLabel: bookable(best) ? actionLabel(best) : t('stop_btn'),
         perPerson: children() ? guests + ' · ' + t('group_total') : guests + ' · ' + t('per_person', { p: money(Math.round(shown(best.price) / state.adults)) }),
-        hasSave: r.live.length > 1 && dearLive.price > cheapLive.price,
-        save: r.live.length > 1 ? money(shown(dearLive.price) - shown(cheapLive.price)) : '',
-        added: inOffer(best.key), open: !!state.open[h.id], facts: hotelFacts(h),
+        hasSave: same.length > 1 && dearLive.price > cheapLive.price,
+        save: same.length > 1 ? money(shown(dearLive.price) - shown(cheapLive.price)) : '',
+        added: inOffer(best.key), open: !!state.open[h.id], facts: hotelFacts(h), photos: hotelGallery(h).length,
+        pk: packageView(best), client: clientLine(best.price),
         pills: r.live.slice(0, 3).map((o, i) => ({ op: o.op.name, color: o.op.color, price: money(shown(o.price)), best: i === 0 })),
         more: r.live.length > 3 ? t('more_ops', { n: r.live.length - 3 }) : '',
         count: r.pass.length,
         offers: ordered.map((o, i) => ({
           key: o.key, op: o.op.name, color: o.op.color, site: o.op.site, meal: mealShort(o.meal) + ' (' + o.meal + ')', room: roomName(o.room),
           availCode: o.avail, avail: t('avail_' + o.avail), seats: t('seats_' + o.seats),
-          confirm: o.instant ? t('conf_instant') : t('conf_hours'), price: money(shown(o.price)),
+          confirm: o.instant ? t('conf_instant') : t('conf_hours'), price: money(shown(o.price)) + (o.withFlight && isHotels() ? ' ✈' : ''),
           best: i === 0 && bookable(o), canBook: bookable(o), bookLabel: actionLabel(o, true), added: inOffer(o.key)
         }))
       };
@@ -594,7 +667,8 @@
       seatsCode: o.seats, seats: t('th_seats') + ': ' + t('seats_' + o.seats), instant: o.instant,
       price: money(shown(o.price)),
       perPerson: children() ? guests + ' · ' + t('group_total') : guests + ' · ' + t('per_person', { p: money(Math.round(shown(o.price) / state.adults)) }),
-      canBook: bookable(o), bookLabel: bookable(o) ? actionLabel(o) : t('stop_btn'), added: inOffer(o.key), facts: hotelFacts(h)
+      canBook: bookable(o), bookLabel: bookable(o) ? actionLabel(o) : t('stop_btn'), added: inOffer(o.key), facts: hotelFacts(h),
+      photos: hotelGallery(h).length, pk: packageView(o), client: clientLine(o.price)
     }));
 
     // "Batafsil" oynasi: tanlangan mehmonxona, uning tafsilotlari va barcha operatorlarning takliflari
@@ -615,8 +689,11 @@
         else if (info.facilities.indexOf('spa') >= 0 && info.facilities.indexOf('gym') >= 0) desc.push(t('d_desc_spa'));
       }
       const ap = D.AIRPORTS[dh.country];
+      const gallery = hotelGallery(dh);
+      const pi = ((state.photo % gallery.length) + gallery.length) % gallery.length;
       detail = {
-        id: dh.id, name: dh.name, stars: dh.stars, tint: D.byId[dh.country].tint, photo: hotelPhoto(dh), place, live: !!dh.live,
+        id: dh.id, name: dh.name, stars: dh.stars, tint: D.byId[dh.country].tint, photo: gallery[pi].src, place, live: !!dh.live,
+        gallery, photoIdx: pi,
         rating: dh.rating ? dh.rating.toFixed(1) : '', ratingWord: dh.rating ? ratingWord(dh.rating) : '',
         dates: datesLabel + ' · ' + t('nights_n', { n: state.nights }) + ' · ' + guests,
         desc, info,
@@ -627,26 +704,43 @@
           const ops = {};
           dOffers.forEach(o => { if (o.room === rm.id) ops[o.op.id] = true; });
           const n = Object.keys(ops).length;
-          return { name: roomName(rm.id), size: info ? t('room_size', { n: info.roomSizes[rm.id] }) : '', ops: n ? t('room_ops', { n }) : t('room_none'), on: n > 0 };
+          return { name: roomName(rm.id), size: info ? t('room_size', { n: info.roomSizes[rm.id] }) : '', ops: n ? t('room_ops', { n }) : t('room_none'), on: n > 0,
+            photo: img(ROOM_PHOTO[rm.id]), idx: gallery.findIndex(x => x.src === img(ROOM_PHOTO[rm.id])) };
         }),
         includes: !sel ? [] : (isHotels() ? [] : [t('inc_flight', { a: fromAirport(state.from), b: airportLabel(dh.country) }), t('inc_transfer')])
           .concat([t('inc_hotel', { n: t('nights_n', { n: state.nights }) + ', ' + roomName(sel.room) }), t('inc_meal', { x: mealLong(sel.meal) })])
           .concat(isHotels() ? [] : [t('inc_ins')]),
         excludes: (isHotels() ? [t('exc_flight')] : [t('exc_visa')]).concat([t('exc_tax'), t('exc_extra')]),
-        flight: isHotels() || !ap ? null : [
-          [t('fl_route'), fromAirport(state.from) + ' → ' + airportLabel(dh.country)],
-          [t('fl_dates'), fmtDay(state.date) + ' – ' + fmtDay(dt.addDays(state.date, state.nights))],
-          [t('fl_time'), t('fl_time_v', { h: String(ap.hrs).replace('.', state.lang === 'en' ? '.' : ',') })],
-          [t('fl_type'), t('fl_type_v')]
-        ].concat(sel ? [[t('fl_seats'), t('seats_' + sel.seats)]] : []),
+        flight: isHotels() || !ap ? null : (() => {
+          const tk = sel && sel.ticket && sel.ticket.price > 0 ? sel.ticket : null;
+          const toCode = (tk && tk.toCode) || (sel && sel.toCode) || '';   // operator javobidagi aeroport (masalan, SSH)
+          const back = dt.addDays(state.date, state.nights);
+          const rows = [
+            [t('fl_from_city'), fromAirport(state.from)],
+            [t('fl_route'), fromAirport(state.from) + ' → ' + (toCode && toCode !== ap.code ? toCode : airportLabel(dh.country))],
+            [t('fl_dates'), fmtDay(state.date) + ' – ' + fmtDay(back)]
+          ];
+          const depMin = depOf(sel), depDay = (sel && sel.depDate) || state.date;
+          if (depMin != null) {
+            rows.push([t('fl_out'), [tk && tk.no, wd(depDay) + ', ' + fmtDay(depDay), hm(depMin) + (tk && tk.arr != null ? ' → ' + hm(tk.arr) : '')].filter(Boolean).join(' · ')]);
+            if (tk && tk.back && tk.back.dep != null) rows.push([t('fl_back'), [tk.back.no, wd(back) + ', ' + fmtDay(back), hm(tk.back.dep) + (tk.back.arr != null ? ' → ' + hm(tk.back.arr) : '')].filter(Boolean).join(' · ')]);
+          } else {
+            rows.push([t('fl_time'), t('fl_time_v', { h: String(ap.hrs).replace('.', state.lang === 'en' ? '.' : ',') })]);
+          }
+          rows.push([t('fl_type'), sel && sel.gds ? t('fl_type_gds') : t('fl_type_v')]);
+          if (tk) rows.push([t('fl_ticket'), money(shown(tk.price)) + (tk.airline ? ' · ' + tk.airline : '')]);
+          if (tk && sel.hotelPrice > 0) rows.push([t('fl_hotel_est'), '≈ ' + money(shown(sel.hotelPrice))]);
+          if (sel) rows.push([t('fl_seats'), t('seats_' + sel.seats)]);
+          return rows;
+        })(),
         sel: sel ? { key: sel.key, op: sel.op.name, color: sel.op.color, site: sel.op.site, meal: mealLong(sel.meal), room: roomName(sel.room),
           availCode: sel.avail, avail: t('avail_' + sel.avail), price: money(shown(sel.price)), canBook: bookable(sel), bookLabel: bookable(sel) ? actionLabel(sel) : t('stop_btn'),
-          added: inOffer(sel.key), tour: sel.tour || '',
+          added: inOffer(sel.key), tour: sel.tour || '', pk: packageView(sel), client: clientLine(sel.price),
           perPerson: children() ? guests + ' · ' + t('group_total') : guests + ' · ' + t('per_person', { p: money(Math.round(shown(sel.price) / state.adults)) }) } : null,
         offers: dOffers.map((o, i) => ({
           key: o.key, op: o.op.name, color: o.op.color, site: o.op.site, meal: mealShort(o.meal) + ' (' + o.meal + ')', room: roomName(o.room),
           availCode: o.avail, avail: t('avail_' + o.avail), seats: t('seats_' + o.seats),
-          confirm: o.instant ? t('conf_instant') : t('conf_hours'), price: money(shown(o.price)),
+          confirm: o.instant ? t('conf_instant') : t('conf_hours'), price: money(shown(o.price)) + (o.withFlight && isHotels() ? ' ✈' : ''),
           best: i === 0 && bookable(o), canBook: bookable(o), bookLabel: actionLabel(o, true), added: inOffer(o.key), selected: sel && o.key === sel.key
         }))
       };
@@ -744,6 +838,8 @@
     ['ops', 'stars', 'meals'].forEach(k => { active += Object.values(state[k]).filter(v => v === false).length; });
     active += cityChecks.filter(c => !c.on).length;
     if (state.onlyAvail) active++;
+    if (!isHotels() && state.withTicket) active++;
+    if (!isHotels() && state.gdsOnly) active++;
     if (state.instant) active++;
     if (state.maxPrice != null && cap < capMax) active++;
     if (hotelQuery) active++;
@@ -758,6 +854,8 @@
     return {
       my, dests, multi, destChips, allDestsOn: dests.length === my.length,
       regions, hot, days, ops, cityChecks, capMin, capMax, cap, active, hotels, tours, tourTotal: allTours.length, detail,
+      // "Chipta narxi ko'rsatilgan" filtri — faqat natijalarda chipta narxi bor takliflar bo'lsa (operatorlar odatda bermaydi)
+      hasTickets: rows.some(r => r.offers.some(o => o.ticket && o.ticket.price > 0)),
       resultsTitle: (multi ? t('countries_n', { n: dests.length }) : destNames[0]) + ': ' + (state.groupBy === 'tour'
         ? t(isHotels() ? 'variants_n' : 'tours_n', { n: allTours.length }) + ' · ' + t('hotels_n', { n: hotels.length })
         : t('hotels_n', { n: hotels.length })),
@@ -871,7 +969,7 @@
     <div class="field">
       <label for="f-from" class="label">${esc(t('f_from'))}</label>
       <select id="f-from" class="input" data-change="from">
-        ${D.FROM.map(f => `<option value="${f.id}"${f.id === state.from ? ' selected' : ''}>${esc(fromName(f.id))}</option>`).join('')}
+        ${D.FROM.map(f => `<option value="${f.id}"${f.id === state.from ? ' selected' : ''}>${esc(fromAirport(f.id))}</option>`).join('')}
       </select>
     </div>`;
     return `
@@ -1041,7 +1139,7 @@
     </div>
     <div class="seg-group">
       <div class="seg" role="group" aria-label="${esc(t('sort_label'))}">${seg('fSort', [{ id: 'price', label: t('sort_price') }, { id: 'dur', label: t('sort_dur') }, { id: 'dep', label: t('sort_dep') }], state.fSort)}</div>
-      <div class="seg" role="group" aria-label="${esc(t('price_type'))}">${seg('mode', [{ id: 'net', label: t('mode_net') }, { id: 'client', label: t('mode_client', { m: MARKUP }) }], state.mode)}</div>
+      <div class="seg" role="group" aria-label="${esc(t('price_type'))}">${seg('mode', [{ id: 'net', label: t('mode_net') }, { id: 'client', label: t('mode_client', { m: mPct() }) }], state.mode)}</div>
     </div>
   </div>
   ${vm.live ? `
@@ -1156,6 +1254,12 @@
     ${vm.cityChecks.map(c => check('city', c.key, c.on, esc(c.label) + (c.sub ? ` <span class="muted">· ${esc(c.sub)}</span>` : ''), c.key)).join('')}
   </fieldset>
 
+  ${isHotels() ? '' : `<fieldset>
+    <legend>${esc(t('f_package'))}</legend>
+    ${vm.hasTickets || state.withTicket ? check('withTicket', null, state.withTicket, esc(t('f_with_ticket')), 'withTicket') : ''}
+    ${check('gdsOnly', null, state.gdsOnly, esc(t('f_gds_only')) + ` <span class="muted" title="${esc(t('gds_hint'))}">ⓘ</span>`, 'gdsOnly')}
+  </fieldset>`}
+
   <fieldset>
     <legend>${esc(t('f_more'))}</legend>
     ${check('onlyAvail', null, state.onlyAvail, esc(t('only_avail')), 'onlyAvail')}
@@ -1188,7 +1292,7 @@
     return `
 <article class="hotel" data-key="${h.id}">
   <div class="hotel-main">
-    <div class="tile" style="background:${h.tint}" aria-hidden="true"><img src="${h.photo}" alt="" loading="lazy"><span>${esc(h.country)}</span></div>
+    ${viewTile(h, h.bestKey)}
     <div class="hotel-info">
       <div class="meta">
         <span class="stars" role="img" aria-label="${esc(t('stars_aria', { n: h.stars }))}">${'★'.repeat(h.stars)}</span>
@@ -1198,6 +1302,7 @@
       <h3><button type="button" class="h-link" data-action="detail" data-arg="${esc(h.bestKey)}" aria-label="${esc(t('details_aria', { h: h.name }))}">${esc(h.name)}</button></h3>
       <div class="place">${I.pin}<span>${esc(h.place)} · ${esc(h.dates)}</span></div>
       ${h.tour ? `<div class="xs muted live-tour">${esc(h.tour)}</div>` : ''}
+      ${viewPk(h.pk)}
       ${viewFacts(h.facts)}
       <div class="pills">
         <span class="pill">${esc(h.meal)}</span>
@@ -1210,6 +1315,7 @@
       <span class="xs muted">${esc(t('cheapest_by', { op: h.bestOp }))}</span>
       <span class="big-price">${esc(h.bestPrice)}</span>
       <span class="xs muted">${esc(h.perPerson)}</span>
+      ${viewClient(h.client)}
       ${h.hasSave ? `<span class="save">${esc(t('op_diff', { p: h.save }))}</span>` : ''}
       <div class="actions">
         <button type="button" class="btn" data-action="book" data-arg="${esc(h.bestKey)}"${h.canBook ? '' : ' disabled'}>${esc(h.bookLabel)}</button>
@@ -1228,6 +1334,28 @@
 </article>`;
   }
 
+  // Kartadagi rasm: bosilsa "Batafsil" oynasi galereyasi bilan ochiladi; burchakda rasmlar soni
+  function viewTile(x, key) {
+    return `<button type="button" class="tile" style="background:${x.tint}" data-action="photos" data-arg="${esc(key)}" aria-label="${esc(t('photos_aria', { h: x.name, n: x.photos }))}">
+      <img src="${x.photo}" alt="" loading="lazy">
+      ${x.photos > 1 ? `<i class="tile-count" aria-hidden="true">${I.camera}${x.photos}</i>` : ''}
+      <span>${esc(x.country)}</span></button>`;
+  }
+
+  // Paket tarkibi: qayerdan uchish (va vaqti), GDS/charter belgisi, aviachipta + mehmonxona narxi; mehmonxona — tur paket ichidan
+  function viewPk(pk) {
+    if (!pk) return '';
+    const badges = [
+      pk.gds ? `<span class="pill pk-gds" title="${esc(t('gds_hint'))}">✈ ${esc(t('gds_badge'))}</span>` : '',
+      pk.charter ? `<span class="pill">${esc(t('charter_badge'))}</span>` : '',
+      pk.fromTour ? `<span class="pill pk-tour" title="${esc(pk.fromTourHint)}">${esc(t('pk_from_tour'))}</span>` : ''
+    ].join('');
+    const split = [pk.ticket, pk.hotel, pk.withFlight].filter(Boolean);
+    return `${pk.dep ? `<div class="pk-dep">✈ ${esc(pk.dep)}</div>` : ''}${badges || split.length ? `
+      <div class="pk-row">${badges}${split.length ? `<span class="pk-split" title="${esc(t('pk_split_hint'))}">${esc(split.join(' + '))}</span>` : ''}</div>` : ''}`;
+  }
+  const viewClient = (s) => (s ? `<span class="xs client-line">${esc(s)}</span>` : '');
+
   // Mehmonxona haqida qisqa faktlar (dengiz, aeroport, asosiy qulayliklar)
   function viewFacts(facts) {
     return facts && facts.length ? `<ul class="facts">${facts.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : '';
@@ -1239,7 +1367,7 @@
     return `
 <article class="hotel tour-card" data-key="${esc(x.key)}">
   <div class="hotel-main">
-    <div class="tile" style="background:${x.tint}" aria-hidden="true"><img src="${x.photo}" alt="" loading="lazy"><span>${esc(x.country)}</span></div>
+    ${viewTile(x, x.key)}
     <div class="hotel-info">
       <div class="meta">
         <span class="stars" role="img" aria-label="${esc(t('stars_aria', { n: x.stars }))}">${'★'.repeat(x.stars)}</span>
@@ -1250,6 +1378,7 @@
       <div class="place">${I.pin}<span>${esc(x.place)} · ${esc(x.dates)}</span></div>
       <div class="tour-op"><span class="dot sm" style="background:${x.color}" aria-hidden="true"></span><span class="muted">${esc(t('tour_op'))}:</span> <b>${esc(x.op)}</b>${x.site ? ` <a class="op-site sm" href="${esc(x.site)}" target="_blank" rel="noopener noreferrer" title="${esc(t('op_site', { op: x.op }))}" aria-label="${esc(t('op_site', { op: x.op }))}">${I.ext}</a>` : ''}</div>
       ${x.tour ? `<div class="xs muted live-tour">${esc(x.tour)}</div>` : ''}
+      ${viewPk(x.pk)}
       <div class="pills">
         <span class="pill">${esc(x.meal)}</span>
         <span class="pill">${esc(x.room)}</span>
@@ -1262,6 +1391,7 @@
     <div class="price-box">
       <span class="big-price">${esc(x.price)}</span>
       <span class="xs muted">${esc(x.perPerson)}</span>
+      ${viewClient(x.client)}
       <div class="actions">
         <button type="button" class="btn" data-action="book" data-arg="${esc(x.key)}"${x.canBook ? '' : ' disabled'}>${esc(x.bookLabel)}</button>
         <button type="button" class="btn btn-accent btn-add" data-action="add" data-arg="${esc(x.key)}" aria-pressed="${x.added}"${x.canBook ? '' : ' disabled'}>${esc(x.added ? t('in_offer') : t('add_offer'))}</button>
@@ -1282,8 +1412,12 @@
 <div class="modal-back" data-key="detail">
   <div class="dl-card" role="dialog" aria-modal="true" aria-labelledby="h-detail">
     <div class="dl-hero" style="background:${d.tint}">
-      <img src="${d.photo}" alt="" loading="lazy">
+      <img src="${d.photo}" alt="${esc(d.gallery[d.photoIdx].cap)}">
       <button type="button" class="icon-btn dl-close" data-action="closeDetail" aria-label="${esc(t('hide'))}">${I.close}</button>
+      ${d.gallery.length > 1 ? `
+      <button type="button" class="dl-nav dl-prev" data-action="photo" data-arg="prev" aria-label="${esc(t('ph_prev'))}">${I.prev}</button>
+      <button type="button" class="dl-nav dl-next" data-action="photo" data-arg="next" aria-label="${esc(t('ph_next'))}">${I.next}</button>
+      <span class="dl-count" aria-live="polite">${esc(d.gallery[d.photoIdx].cap)} · ${d.photoIdx + 1} / ${d.gallery.length}</span>` : ''}
       <div class="dl-hero-text">
         <div class="meta">
           <span class="stars" role="img" aria-label="${esc(t('stars_aria', { n: d.stars }))}">${'★'.repeat(d.stars)}</span>
@@ -1293,6 +1427,10 @@
         <div class="place">${I.pin}<span>${esc(d.place)}</span></div>
       </div>
     </div>
+    ${d.gallery.length > 1 ? `
+    <div class="dl-thumbs" role="group" aria-label="${esc(t('gallery', { n: d.gallery.length }))}">
+      ${d.gallery.map((p, i) => `<button type="button" class="dl-thumb" data-action="photo" data-arg="${i}" aria-pressed="${i === d.photoIdx}" aria-label="${esc(p.cap)}" title="${esc(p.cap)}"><img src="${p.src}" alt="" loading="lazy"></button>`).join('')}
+    </div>` : ''}
     <div class="dl-body">
       ${s ? `
       <div class="dl-selected">
@@ -1301,11 +1439,13 @@
           <div class="tour-op"><span class="dot sm" style="background:${s.color}" aria-hidden="true"></span><b>${esc(s.op)}</b> · ${esc(s.meal)} · ${esc(s.room)}</div>
           <div class="xs muted">${esc(d.dates)}</div>
           ${s.tour ? `<div class="xs muted">${esc(s.tour)}</div>` : ''}
+          ${viewPk(s.pk)}
           <span class="pill av-${s.availCode}">${esc(s.avail)}</span>
         </div>
         <div class="price-box">
           <span class="big-price">${esc(s.price)}</span>
           <span class="xs muted">${esc(s.perPerson)}</span>
+          ${viewClient(s.client)}
           <div class="actions">
             <button type="button" class="btn" data-action="book" data-arg="${esc(s.key)}"${s.canBook ? '' : ' disabled'}>${esc(s.bookLabel)}</button>
             <button type="button" class="btn btn-accent btn-add" data-action="add" data-arg="${esc(s.key)}" aria-pressed="${s.added}"${s.canBook ? '' : ' disabled'}>${esc(s.added ? t('in_offer') : t('add_offer'))}</button>
@@ -1318,7 +1458,9 @@
         <dl class="dl-stats">${d.stats.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`)
         : `<p class="muted dl-live">${esc(t('d_live'))}${s && s.site ? ` <a href="${esc(s.site)}" target="_blank" rel="noopener noreferrer">${esc(t('d_op_site'))} ↗</a>` : ''}</p>`}
       ${sec(t('d_facilities'), list(d.facilities, 'dl-fac'))}
-      ${d.info ? sec(t('d_rooms'), `<ul class="dl-rooms">${d.rooms.map(r => `<li class="${r.on ? '' : 'off'}"><b>${esc(r.name)}</b><span>${esc(r.size)}</span><span class="muted">${esc(r.ops)}</span></li>`).join('')}</ul>`) : ''}
+      ${d.info ? sec(t('d_rooms'), `<ul class="dl-rooms">${d.rooms.map(r => `<li class="${r.on ? '' : 'off'}">
+          <button type="button" class="dl-room-img" data-action="roomPhoto" data-arg="${r.idx}" aria-label="${esc(r.name)}"><img src="${r.photo}" alt="" loading="lazy"></button>
+          <b>${esc(r.name)}</b><span>${esc(r.size)}</span><span class="muted">${esc(r.ops)}</span></li>`).join('')}</ul>`) : ''}
       ${s ? `<div class="dl-two">
         ${sec(t('d_includes'), list(d.includes, 'dl-inc'))}
         ${sec(t('d_excludes'), list(d.excludes, 'dl-exc'))}
@@ -1362,7 +1504,7 @@
     <div class="seg-group">
       <div class="seg seg-view" role="group" aria-label="${esc(t('group_label'))}">${seg('group', [{ id: 'tour', label: t(isHotels() ? 'group_tour_h' : 'group_tour') }, { id: 'hotel', label: t('group_hotel') }], state.groupBy)}</div>
       <div class="seg" role="group" aria-label="${esc(t('sort_label'))}">${seg('sort', [{ id: 'price', label: t('sort_price') }, { id: 'rating', label: t('sort_rating') }, { id: 'stars', label: t('sort_stars') }], state.sort)}</div>
-      <div class="seg" role="group" aria-label="${esc(t('price_type'))}">${seg('mode', [{ id: 'net', label: t('mode_net') }, { id: 'client', label: t('mode_client', { m: MARKUP }) }], state.mode)}</div>
+      <div class="seg" role="group" aria-label="${esc(t('price_type'))}">${seg('mode', [{ id: 'net', label: t('mode_net') }, { id: 'client', label: t('mode_client', { m: mPct() }) }], state.mode)}</div>
     </div>
   </div>
   ${vm.live ? `
@@ -1409,7 +1551,7 @@
       <div class="row-between" style="align-items:flex-start;gap:12px">
         <div style="min-width:0">
           <h2 id="h-offer" tabindex="-1">${esc(t('panel_title', { x: opts }))}</h2>
-          <p class="muted" style="margin:4px 0 0;font-size:14px">${esc(t('panel_desc', { m: MARKUP }))}</p>
+          <p class="muted" style="margin:4px 0 0;font-size:14px">${esc(t('panel_desc', { m: mPct() }))}</p>
         </div>
         <div class="btn-row">
           <button type="button" class="btn btn-blue" data-action="telegram">${esc(t('send_tg'))}</button>
@@ -1578,6 +1720,11 @@
         adults: state.adults, childAges: state.childAges.slice(), rooms: state.rooms,
         meal: x.o.meal, room: x.o.room, price: x.o.price
       };
+      // Tur: qayerdan uchish va reys vaqti ham taklif matniga kiradi
+      if (!isHotels()) {
+        item.from = state.from;
+        if (depOf(x.o) != null) item.dep = depOf(x.o);
+      }
     }
     setState({ offer: state.offer.concat([item]), note: '' });
   }
@@ -1682,7 +1829,7 @@
       setState({ ops, maxPrice: null });
     },
     opsMore: () => setState({ opsMore: !state.opsMore }),
-    reset: () => setState({ ops: {}, stars: {}, meals: {}, cities: {}, onlyAvail: false, instant: false, maxPrice: null, hotelQuery: '' }),
+    reset: () => setState({ ops: {}, stars: {}, meals: {}, cities: {}, onlyAvail: false, instant: false, withTicket: false, gdsOnly: false, maxPrice: null, hotelQuery: '' }),
     star: (n) => setState({ stars: Object.assign({}, state.stars, { [n]: !starOn(n) }) }),
     sort: (id) => setState({ sort: id }),
     mode: (id) => setState({ mode: id }),
@@ -1695,8 +1842,18 @@
       if (!x || !x.h) return;
       detailReturn = key;
       pendingFocus = '#h-detail';
-      setState({ detail: x.h.id, detailKey: key });
+      setState({ detail: x.h.id, detailKey: key, photo: 0 });
     },
+    // Galereya: 'prev' / 'next' yoki rasm tartib raqami
+    photo: (arg) => setState({ photo: arg === 'prev' ? state.photo - 1 : arg === 'next' ? state.photo + 1 : (+arg || 0) }),
+    // Xona rasmi bosilsa — katta rasmda ko'rsatiladi (oyna tepaga suriladi)
+    roomPhoto: (arg) => {
+      actions.photo(arg);
+      const back = app.querySelector('.modal-back');
+      if (back) back.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    // Kartadagi rasm: "Batafsil" oynasi galereyasi bilan ochiladi
+    photos: (key) => actions.detail(key),
     closeDetail: () => {
       const esc2 = (s) => (window.CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/["\\]/g, '\\$&'));
       if (detailReturn) pendingFocus = '[data-action="detail"][data-arg="' + esc2(detailReturn) + '"]';
@@ -1793,6 +1950,8 @@
     meal: (el) => setState({ meals: Object.assign({}, state.meals, { [el.dataset.arg]: el.checked }) }),
     city: (el) => setState({ cities: Object.assign({}, state.cities, { [el.dataset.arg]: el.checked }) }),
     onlyAvail: (el) => setState({ onlyAvail: el.checked }),
+    withTicket: (el) => setState({ withTicket: el.checked, maxPrice: null }),
+    gdsOnly: (el) => setState({ gdsOnly: el.checked, maxPrice: null }),
     instant: (el) => setState({ instant: el.checked }),
     price: (el) => setState({ maxPrice: +el.value })
   };
@@ -1822,6 +1981,11 @@
   });
   // Esc: ochiq oyna yoki panelni yopadi
   document.addEventListener('keydown', (e) => {
+    // Galereya: chap / o'ng strelkalar (yozish maydonida emas)
+    if (state.detail && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !/^(INPUT|SELECT|TEXTAREA)$/.test((e.target.tagName || ''))) {
+      actions.photo(e.key === 'ArrowLeft' ? 'prev' : 'next');
+      return;
+    }
     if (e.key !== 'Escape') return;
     if (state.detail) actions.closeDetail();
     else if (state.settings) { pendingFocus = '[data-action="toggleSettings"]'; setState({ settings: false, cq: '' }); }
@@ -1918,7 +2082,7 @@
           note: 'Demo flight search from the agent screen. Times are local. Prices are totals for all passengers.',
           search: lastVm.resultsTitle + ' — ' + lastVm.summary,
           currency: state.cur,
-          priceType: state.mode === 'client' ? 'client price incl. ' + MARKUP + '% agency markup' : 'net price (agency cost)',
+          priceType: state.mode === 'client' ? 'client price incl. ' + markup() + '% agency markup' : 'net price (agency cost)',
           flights: lastVm.flights.slice(0, 10).map(f => ({
             airline: f.airline, price: f.price, baggage: f.bag, seats: f.seats,
             legs: f.legs.map(l => l.no + ' ' + l.date + ' ' + l.from + ' ' + l.dep + ' → ' + l.to + ' ' + l.arr + (l.plus ? ' (' + l.plus + ' day)' : '') + ', ' + l.dur + ', ' + l.stops).join(' / ')
@@ -1931,7 +2095,7 @@
           : 'Demo data from the agent screen. Prices are totals for the whole group, flights included.',
         search: lastVm.resultsTitle + ' — ' + lastVm.summary,
         currency: state.cur,
-        priceType: state.mode === 'client' ? 'client price incl. ' + MARKUP + '% agency markup' : 'net price (agency cost)',
+        priceType: state.mode === 'client' ? 'client price incl. ' + markup() + '% agency markup' : 'net price (agency cost)',
         hotels: lastVm.hotels.slice(0, 10).map(h => ({
           name: h.name, stars: h.stars, rating: h.rating, place: h.place, meal: h.meal, room: h.room,
           availability: h.avail, cheapest: h.bestOp + ' ' + h.bestPrice,

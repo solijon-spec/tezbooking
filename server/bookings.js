@@ -17,9 +17,12 @@ const { PRODUCTS } = require('./db');
 
 const MAX_KEY = 300, MAX_TEXT = 200;
 
-function createBookingsApi({ db, sendJson, readBody, accounts }) {
+const SSE_PER_IP = 8;           // bitta IP'dan ochiq jonli ulanishlar (bitta odam hamma 200 joyni band qila olmasin)
+
+function createBookingsApi({ db, sendJson, readBody, accounts, clientIp = (req) => req.socket.remoteAddress || '' }) {
   // ---------- Jonli ulanishlar (SSE) ----------
   const clients = new Set();
+  const perIp = new Map();
   let version = 0;
 
   function notify(reason) {
@@ -33,12 +36,20 @@ function createBookingsApi({ db, sendJson, readBody, accounts }) {
 
   function handleEvents(req, res) {
     if (clients.size >= 200) return sendJson(res, 503, { error: 'busy' });
+    const ip = String(clientIp(req) || '');
+    const local = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+    if (!local && (perIp.get(ip) || 0) >= SSE_PER_IP) return sendJson(res, 429, { error: 'too_many_streams' });
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no'
     });
     res.write(`retry: 3000\nevent: hello\ndata: ${JSON.stringify({ v: version })}\n\n`);
     clients.add(res);
-    req.on('close', () => clients.delete(res));
+    perIp.set(ip, (perIp.get(ip) || 0) + 1);
+    req.on('close', () => {
+      clients.delete(res);
+      const n = (perIp.get(ip) || 1) - 1;
+      if (n > 0) perIp.set(ip, n); else perIp.delete(ip);
+    });
   }
 
   // ---------- Tekshirish ----------

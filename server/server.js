@@ -47,6 +47,8 @@ const CHAT_MODEL = process.env.CHAT_MODEL || 'claude-sonnet-5-5';   // javob ber
 const GUARD_MODEL = process.env.GUARD_MODEL || 'claude-haiku-5-5';  // mavzuni tekshiruvchi tez model
 const GUARD_ON = process.env.TOPIC_GUARD !== 'off';
 
+// CHAT_REQUIRE_LOGIN=1 — AI chat faqat tur firma sifatida kirganlarga. Production'da sukut bo'yicha yoqilgan.
+const CHAT_REQUIRE_LOGIN = (process.env.CHAT_REQUIRE_LOGIN || (process.env.NODE_ENV === 'production' ? '1' : '0')) === '1';
 const MAX_MSG = 2000;          // bitta xabar uzunligi (belgi)
 const MAX_TURNS = 12;          // modelga yuboriladigan oxirgi xabarlar soni
 const MAX_BODY = 64 * 1024;    // so'rov hajmi (bayt)
@@ -123,10 +125,13 @@ function sendJson(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
-// Faqat shu kompyuterdagi sahifalar (localhost, 127.0.0.1, fayldan ochilgan sahifa) chatdan foydalana oladi
+// Faqat shu kompyuterdagi sahifalar (localhost, 127.0.0.1, fayldan ochilgan sahifa) chatdan foydalana oladi.
+// Haqiqiy serverda (production) boshqa origin'larga umuman ruxsat yo'q: "null" origin'ni istalgan saytning sandbox iframe'i yubora oladi.
+const IS_PROD = process.env.NODE_ENV === 'production';
+const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 function cors(req, res) {
   const origin = req.headers.origin;
-  if (origin && (origin === 'null' || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))) {
+  if (!IS_PROD && origin && (origin === 'null' || LOCAL_ORIGIN.test(origin))) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -144,6 +149,8 @@ function rateLimited(ip) {
   hits.set(ip, list);
   return list.length > RATE_PER_MIN;
 }
+// Eski yozuvlarni tozalash — ko'p IP'dan kelgan so'rovlar xotirani to'ldirmasin
+setInterval(() => { const now = Date.now(); hits.forEach((list, ip) => { if (!list.some(ts => now - ts < 60000)) hits.delete(ip); }); }, 120000).unref();
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -248,6 +255,8 @@ async function streamAnswer(req, res, signal) {
 async function handleChat(req, res) {
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'method' });
   if (!API_KEY) return sendJson(res, 503, { error: 'no_key' });
+  // Haqiqiy serverda AI chat faqat kirgan tur firmalar uchun (aks holda istalgan odam API kalitingiz hisobidan foydalana oladi)
+  if (CHAT_REQUIRE_LOGIN && !accounts.agencyOf(req)) return sendJson(res, 401, { error: 'login_required' });
   if (rateLimited(clientIp(req))) return sendJson(res, 429, { error: 'rate_limited' });
   let request;
   try { request = cleanRequest(JSON.parse(await readBody(req))); }
@@ -300,11 +309,33 @@ catch (e) { console.error('Bazani ochib bo\'lmadi: ' + e.message); process.exit(
 let ownerDb;
 try { ownerDb = require('./owner/db').open(OWNER_DB_FILE); }
 catch (e) { console.error('Owner bazasini ochib bo\'lmadi: ' + e.message); process.exit(1); }
-const accounts = require('./accounts').createAccounts({ db, sendJson, readBody, paymentMode: (process.env.PAYMENT_MODE || 'manual').trim() });
-const bookingsApi = require('./bookings').createBookingsApi({ db, sendJson, readBody, accounts });
+// Xavfsizlik qalqoni: shubhali IP'larni aniqlash va avtomatik bloklash (server/security.js)
+const shield = require('./security').createShield({
+  db,
+  enabled: (process.env.SHIELD || 'on').trim() !== 'off',
+  allowIps: String(process.env.SHIELD_ALLOW_IPS || '').split(','),
+  maxPerMin: Number(process.env.SHIELD_MAX_PER_MIN) || 600
+});
+const accounts = require('./accounts').createAccounts({
+  db, sendJson, readBody, shield, paymentMode: (process.env.PAYMENT_MODE || 'manual').trim(),
+  selfRegister: (process.env.AGENCY_SELF_REGISTER || '1').trim() !== '0'
+});
+const bookingsApi = require('./bookings').createBookingsApi({ db, sendJson, readBody, accounts, clientIp });
 accounts.setNotify(bookingsApi.notify);
 const live = require('./live').createLive({ sendJson, clientIp }); // operatorlardan haqiqiy narxlar
-const adminApi = require('./admin').createAdminApi({ db, sendJson, readBody, notify: bookingsApi.notify, password: process.env.ADMIN_PASSWORD || '', accounts });
+const adminApi = require('./admin').createAdminApi({ db, sendJson, readBody, notify: bookingsApi.notify, password: process.env.ADMIN_PASSWORD || '', accounts, shield });
+// Telegram bot (TELEGRAM_BOT_TOKEN bo'lsa): tur agentliklar uchun kanalga post tayyorlaydi (server/telegram/bot.js)
+let telegramBot = null;
+if ((process.env.TELEGRAM_BOT_TOKEN || '').trim()) {
+  try {
+    telegramBot = require('./telegram/bot').createTelegramBot({
+      token: process.env.TELEGRAM_BOT_TOKEN.trim(), db, accounts, live, root: ROOT,
+      // Demo narxlar faqat npm run demo yoki TELEGRAM_DEMO=1 da (postda "DEMO" deb yoziladi)
+      demo: process.env.TELEGRAM_DEMO === '1' || process.env.TEZ_DEMO_AGENTS === '1',
+      open: process.env.TELEGRAM_OPEN === '1', shield
+    });
+  } catch (e) { console.error('[telegram] botni ishga tushirib bo\'lmadi:', e.message); }
+}
 const ownerAuth = require('./owner/auth').createOwnerAuth({
   email: OWNER_EMAIL,
   passwordHash: process.env.OWNER_PASSWORD_HASH || '',
@@ -368,12 +399,24 @@ const runBookings = (req, res, pathname, url) => bookingsApi.handle(req, res, pa
 });
 
 // ---------- Admin panel serveri (faqat admin sahifasi, uning fayllari va admin API) ----------
+// CSRF: cookie bilan ishlaydigan POST so'rov faqat shu saytning o'zidan (yoki lokal ishda localhost'dan) kelishi mumkin
+function sameOrigin(origin, req) {
+  let u;
+  try { u = new URL(origin); } catch (e) { return false; }
+  if (u.host === req.headers.host) return true;
+  const fwd = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  if (fwd && u.host === fwd) return true;
+  return !IS_PROD && LOCAL_ORIGIN.test(origin);
+}
+const guardOpts = { checkOrigin: true, allowedOrigin: sameOrigin };
+
 const ADMIN_FILES = /^\/(css\/(styles|admin)\.css|js\/(admin|data|demo-seed|demo-api|theme|agent-parser)\.js|images\/[\w.-]+\.(png|jpg|svg))$/;
 const adminServer = ADMIN_SEPARATE && http.createServer((req, res) => {
+  if (shield.guard(req, res, clientIp(req), guardOpts)) return;
+  shield.headers(res, 'admin');
   let url;
   try { url = new URL(req.url, 'http://localhost'); } catch (e) { return sendJson(res, 400, { error: 'bad_path' }); }
   const pathname = url.pathname;
-  res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-Robots-Tag', 'noindex');
   if (pathname.startsWith('/api/admin/')) return runAdmin(req, res, pathname, url);
   if (pathname === '/api/events') return runBookings(req, res, pathname, url);   // jonli yangilanish
@@ -384,11 +427,13 @@ const adminServer = ADMIN_SEPARATE && http.createServer((req, res) => {
 });
 
 const server = http.createServer((req, res) => {
+  if (shield.guard(req, res, clientIp(req), guardOpts)) return;
   cors(req, res);
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   let url;
   try { url = new URL(req.url, 'http://localhost'); } catch (e) { return sendJson(res, 400, { error: 'bad_path' }); }
   const pathname = url.pathname;
+  shield.headers(res, pathname.startsWith('/api/') ? 'api' : (pathname === '/admin' || pathname === '/admin.html' ? 'admin' : 'site'));
   if (pathname === '/owner' || pathname === '/owner/' || pathname === '/owner.html') {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.setHeader('Allow', 'GET, HEAD');
@@ -402,6 +447,7 @@ const server = http.createServer((req, res) => {
     return serveStatic(req, res);
   }
   if (pathname === '/api/owner' || pathname.startsWith('/api/owner/')) {
+    if (pathname === '/api/owner/login') res.on('finish', () => { if (res.statusCode === 401) shield.report(clientIp(req), 'auth_fail', 'owner'); });
     ownerApi.handle(req, res, pathname, url).catch(error => {
       console.error('[owner] request failed:', error.code || 'internal');
       sendJson(res, 500, { error: 'server' });
@@ -445,6 +491,14 @@ const server = http.createServer((req, res) => {
   sendJson(res, 405, { error: 'method' });
 });
 
+// Sekin so'rovlar bilan ulanishlarni band qilib qo'yishdan (slowloris) himoya
+[server, adminServer].filter(Boolean).forEach(s => {
+  s.headersTimeout = 20000;      // sarlavhalar 20 soniyada kelishi kerak
+  s.requestTimeout = 60000;      // butun so'rov — 60 soniya (SSE javobiga ta'sir qilmaydi)
+  s.keepAliveTimeout = 5000;
+  s.maxHeadersCount = 60;
+});
+
 server.listen(PORT, '127.0.0.1', () => {
   console.log('');
   console.log('  TezBooking ishga tushdi:  http://localhost:' + PORT);
@@ -456,8 +510,11 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('  To\'lov rejimi:            ' + (accounts.mode === 'demo'
     ? "DEMO — to'lov pulsiz tasdiqlanadi! Haqiqiy saytda PAYMENT_MODE=manual qiling"
     : "manual — admin to'lovni qo'lda tasdiqlaydi"));
+  console.log('  Xavfsizlik qalqoni:       ' + ((process.env.SHIELD || 'on').trim() !== 'off' ? 'yoqilgan (admin panel → Xavfsizlik)' : "O'CHIQ (SHIELD=off)"));
+  console.log('  Telegram bot:             ' + (telegramBot ? 'ishga tushmoqda…' : "o'chiq (.env → TELEGRAM_BOT_TOKEN)"));
   console.log('  To\'xtatish: Ctrl + C');
   console.log('');
+  if (telegramBot) telegramBot.start();
 });
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') console.error('Port ' + PORT + " band. .env faylida boshqa PORT yozing (masalan, PORT=3005).");
@@ -474,6 +531,7 @@ if (adminServer) {
 }
 // To'xtatilganda baza to'g'ri yopiladi
 ['SIGINT', 'SIGTERM'].forEach(sig => process.on(sig, () => {
+  try { if (telegramBot) telegramBot.stop(); } catch (e) { /* */ }
   try { ownerScheduler.close(); ownerApi.close(); adminAgentsApi.close(); ownerAuth.close(); ownerDb.close(); db.close(); } catch (e) { /* yopilgan */ }
   process.exit(0);
 }));

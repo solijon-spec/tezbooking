@@ -19,11 +19,13 @@
   const BY = { admin: 'admin', site: 'sayt', import: 'brauzerdan ko\'chirildi' };
   const PROVIDER = { demo: 'Demo', manual: 'Qo\'lda (bank / naqd)', payme: 'Payme', click: 'Click' };
   const PAY_STATUS = { pending: ['wait', 'Kutilmoqda'], paid: ['ok', 'To\'langan'], cancelled: ['off', 'Bekor qilingan'] };
-  const TABS = [['overview', 'Umumiy'], ['agencies', 'Tur firmalar'], ['payments', 'To\'lovlar'], ['tariffs', 'Tariflar'], ['bookings', 'Bronlar'], ['agents', 'Agentlar']];
+  const TABS = [['overview', 'Umumiy'], ['agencies', 'Tur firmalar'], ['payments', 'To\'lovlar'], ['tariffs', 'Tariflar'], ['bookings', 'Bronlar'], ['agents', 'Agentlar'], ['security', 'Xavfsizlik']];
   const ERR = {
     bad_login: 'Login 3–32 belgi bo\'lsin: lotin harflari, raqamlar, nuqta, chiziqcha.',
     login_taken: 'Bu login band. Boshqasini yozing.', bad_name: 'Firma nomini yozing.', bad_price: 'Narx noto\'g\'ri.',
     no_change: 'Holat allaqachon o\'zgargan. Sahifa yangilandi.', bad_tariff: 'Tarif topilmadi yoki o\'chirilgan.',
+    bad_markup: 'Ustama foizi 0 dan 50 gacha bo\'lsin.', bad_request: 'Ma\'lumot noto\'g\'ri.', bad_ip: 'IP manzil noto\'g\'ri.',
+    self_ban: 'O\'zingizning IP manzilingizni bloklab bo\'lmaydi.', exempt_ip: 'Bu IP ruxsat etilganlar ro\'yxatida (SHIELD_ALLOW_IPS yoki lokal).',
     // Agentlar
     bad_search_parameters: 'Qidiruv ma\'lumotlarini tekshiring: davlat, sana, kechalar, kishilar.',
     bad_command: 'Topshiriq matnini yozing.', bad_settings: 'Sozlamalar noto\'g\'ri (ruxsat etilgan oraliqdan tashqarida).',
@@ -50,7 +52,8 @@
   const state = {
     tab: 'overview', stats: null, bookings: [], agencies: [], payments: [], tariffs: [], today: '',
     bq: '', bstatus: 'active', bproduct: '', aq: '', afilter: 'all', pfilter: 'pending', busy: false,
-    ag: { data: null, error: '', draft: '', clarify: null, oq: '' }   // Agentlar bo'limi
+    ag: { data: null, error: '', draft: '', clarify: null, oq: '' },  // Agentlar bo'limi
+    sec: null                                                       // Xavfsizlik bo'limi
   };
   let es = null, agEs = null;
   let siteUrl = '/';                 // sayt manzili (admin alohida portda bo'lsa — http://localhost:3000)
@@ -204,7 +207,7 @@
     const v = document.getElementById('view');
     const keepFocus = document.activeElement && document.activeElement.id;
     const caret = keepFocus && document.activeElement.selectionStart;
-    v.innerHTML = { overview: viewOverview, agencies: viewAgencies, payments: viewPayments, tariffs: viewTariffs, bookings: viewBookings, agents: viewAgents }[state.tab]();
+    v.innerHTML = { overview: viewOverview, agencies: viewAgencies, payments: viewPayments, tariffs: viewTariffs, bookings: viewBookings, agents: viewAgents, security: viewSecurity }[state.tab]();
     // Qidiruv maydonida (va agent topshirig'ida) yozish davom etsin
     if (keepFocus) {
       const el = document.getElementById(keepFocus);
@@ -280,6 +283,7 @@
     <label><span class="label">Login *</span><input class="input input-sm" name="login" required pattern="[A-Za-z0-9._\\-]{3,32}" maxlength="32" placeholder="masalan: sayyoh"></label>
     <label><span class="label">Telefon</span><input class="input input-sm" name="phone" maxlength="40" placeholder="+998 90 123 45 67"></label>
     <label><span class="label">Mas'ul shaxs</span><input class="input input-sm" name="contact" maxlength="120"></label>
+    <label><span class="label">Ustama, %</span><input class="input input-sm" name="markup" type="number" min="0" max="50" step="0.5" value="10" title="Firma oladigan foiz: mijoz narxi = netto + foiz"></label>
     <label><span class="label">Parol</span><input class="input input-sm" name="password" minlength="8" maxlength="64" placeholder="avtomatik"></label>
     <button class="btn btn-dark" type="submit">Qo'shish</button>
   </form>
@@ -297,7 +301,7 @@
       const st = agencyState(a);
       return `
       <tr class="${a.status === 'blocked' ? 'is-off' : ''}">
-        <td data-th="Firma"><b>${esc(a.name)}</b><span class="hint ad-sub">${esc([a.contact, a.phone].filter(Boolean).join(' · ') || '—')}</span></td>
+        <td data-th="Firma"><b>${esc(a.name)}</b><span class="hint ad-sub">${esc([a.contact, a.phone].filter(Boolean).join(' · ') || '—')}</span><span class="hint ad-sub">Ustama ${esc(a.markup != null ? a.markup : 10)}%${a.source === 'self' ? ' · o\'zi ro\'yxatdan o\'tgan' : ''}</span></td>
         <td data-th="Login"><code>${esc(a.login)}</code></td>
         <td data-th="Tarif"><span class="ad-status ad-s-${st[0]}">${esc(st[1])}</span>${a.pending ? `<a class="hint ad-sub" href="#payments">${a.pending} ta to'lov kutilmoqda</a>` : ''}</td>
         <td data-th="Bronlar" class="num">${a.bookings}</td>
@@ -318,6 +322,78 @@
     }).join('')}</tbody>
   </table></div>`}
 </section>`;
+  }
+
+  // ---------- Xavfsizlik (server/security.js) ----------
+  const SEC_KIND = {
+    scan: 'Skaner (/.env, /wp-admin…)', attack: 'Hujum naqshi (SQL/XSS/traversal)', auth_fail: 'Noto\'g\'ri parol', csrf: 'Boshqa saytdan so\'rov (CSRF)',
+    rate_limited: 'Limitga urildi', register_flood: 'Ko\'p ro\'yxatdan o\'tish', honeypot: 'Bot tuzog\'i', not_found: '404', bad_method: 'Noto\'g\'ri metod',
+    bad_request: 'Buzuq so\'rov', too_large: 'Juda katta so\'rov', flood: 'So\'rovlar oqimi', ban: 'BLOKLANDI', unban: 'Blokdan chiqarildi', tg_abuse: 'Telegram'
+  };
+  function viewSecurity() {
+    const s = state.sec;
+    if (!s) return '<section class="card ad-table-card"><p class="muted">Yuklanmoqda…</p></section>';
+    const last = s.last24h || {};
+    const kpi = [
+      ['Hozir bloklangan', s.activeBans || 0, 'IP manzil'],
+      ['Skaner / hujum (24 soat)', (last.scan || 0) + (last.attack || 0), 'darhol bloklanadi'],
+      ['Noto\'g\'ri parol (24 soat)', last.auth_fail || 0, '5 ta xato — blok'],
+      ['Kuzatuvda', (s.watch || []).length, 'shubhali IP']
+    ];
+    const bans = (s.bans || []).filter(b => b.active).concat((s.bans || []).filter(b => !b.active).slice(0, 20));
+    return `
+${s.demo ? '<div class="ad-banner">Brauzer demosi: xavfsizlik qalqoni faqat serverda (npm start) ishlaydi.</div>' : !s.enabled ? '<div class="ad-banner">Qalqon o\'chirilgan (.env: SHIELD=off). Yoqish tavsiya etiladi.</div>' : ''}
+${tiles(kpi)}
+<section class="card ad-table-card" aria-labelledby="h-sec">
+  <h1 id="h-sec" class="h2">Xavfsizlik qalqoni</h1>
+  <p class="hint">Shubhali harakatlar IP'ga ball qo'shadi (10 ball — blok). Blok muddati har safar oshadi: ${esc((s.steps || []).map(m => m >= 1440 ? (m / 1440) + ' kun' : m >= 60 ? (m / 60) + ' soat' : m + ' daq').join(' → '))}.
+    Sizning IP: <code>${esc(s.you || '—')}</code> (lokal va SHIELD_ALLOW_IPS dagi IP'lar bloklanmaydi).</p>
+  <form class="ad-grid-form" data-form="ban" autocomplete="off">
+    <label><span class="label">IP manzil</span><input class="input input-sm" name="ip" required maxlength="45" placeholder="203.0.113.5"></label>
+    <label><span class="label">Muddat</span><select class="input input-sm" name="minutes"><option value="60">1 soat</option><option value="1440" selected>1 kun</option><option value="10080">7 kun</option><option value="525600">1 yil</option></select></label>
+    <label><span class="label">Sabab</span><input class="input input-sm" name="reason" maxlength="100" placeholder="qo'lda"></label>
+    <button class="btn btn-dark" type="submit">Bloklash</button>
+  </form>
+</section>
+<section class="card ad-table-card" aria-labelledby="h-bans">
+  <h2 id="h-bans" class="h2">Bloklangan IP'lar <span class="count">${s.activeBans || 0}</span></h2>
+  ${!bans.length ? '<p class="ad-empty muted">Hozircha bloklangan IP yo\'q.</p>' : `
+  <div class="ad-scroll"><table class="ad-table">
+    <thead><tr><th>IP</th><th>Holat</th><th>Sabab</th><th class="num">Marta</th><th>Qachongacha</th><th><span class="sr-only">Amallar</span></th></tr></thead>
+    <tbody>${bans.map(b => `
+      <tr class="${b.active ? '' : 'is-off'}">
+        <td data-th="IP"><code>${esc(b.ip)}</code></td>
+        <td data-th="Holat"><span class="ad-status ad-s-${b.active ? 'off' : 'past'}">${b.active ? 'Bloklangan' : 'Muddati tugagan'}</span>${b.manual ? '<span class="hint ad-sub">qo\'lda</span>' : ''}</td>
+        <td data-th="Sabab">${esc(b.reason || '—')}</td>
+        <td data-th="Marta" class="num">${esc(b.strikes)}</td>
+        <td data-th="Qachongacha" class="nowrap">${esc(stamp(b.until))}</td>
+        <td class="ad-actions">${b.active ? `<button type="button" class="btn btn-sm" data-do="unban" data-id="${esc(b.ip)}">Blokdan chiqarish</button>` : ''}</td>
+      </tr>`).join('')}</tbody>
+  </table></div>`}
+</section>
+${(s.watch || []).length ? `
+<section class="card ad-table-card" aria-labelledby="h-watch">
+  <h2 id="h-watch" class="h2">Kuzatuvdagi IP'lar</h2>
+  <p class="hint">Ball vaqt o'tishi bilan kamayadi (har 10 daqiqada yarmiga).</p>
+  <div class="ad-scroll"><table class="ad-table"><thead><tr><th>IP</th><th class="num">Ball (10 dan)</th><th></th></tr></thead>
+  <tbody>${s.watch.map(w => `<tr><td data-th="IP"><code>${esc(w.ip)}</code></td><td data-th="Ball" class="num">${esc(w.score)}</td>
+    <td class="ad-actions"><button type="button" class="btn btn-sm ad-danger" data-do="banIp" data-id="${esc(w.ip)}">Bloklash</button></td></tr>`).join('')}</tbody></table></div>
+</section>` : ''}
+<section class="card ad-table-card" aria-labelledby="h-ev">
+  <h2 id="h-ev" class="h2">Oxirgi hodisalar</h2>
+  ${!(s.events || []).length ? '<p class="ad-empty muted">Hodisalar yo\'q.</p>' : `
+  <div class="ad-scroll"><table class="ad-table">
+    <thead><tr><th>Vaqt</th><th>IP</th><th>Hodisa</th><th>Tafsilot</th></tr></thead>
+    <tbody>${s.events.slice(0, 120).map(e => `
+      <tr><td data-th="Vaqt" class="nowrap">${esc(stamp(e.at))}</td><td data-th="IP"><code>${esc(e.ip)}</code></td>
+      <td data-th="Hodisa">${e.kind === 'ban' ? '<b>' + esc(SEC_KIND.ban) + '</b>' : esc(SEC_KIND[e.kind] || e.kind)}</td><td data-th="Tafsilot" class="hint">${esc(e.detail || '')}</td></tr>`).join('')}</tbody>
+  </table></div>`}
+</section>`;
+  }
+  async function loadSecurity() {
+    try { state.sec = await api('/security'); }
+    catch (err) { if (err.status === 401) { showLogin('Sessiya tugadi, qayta kiring.'); return; } }
+    if (state.tab === 'security' && document.getElementById('view') && !editing()) draw();
   }
 
   // ---------- To'lovlar ----------
@@ -631,6 +707,7 @@
         <label><span class="label">Firma nomi</span><input class="input" name="name" value="${esc(a.name)}" required maxlength="120"></label>
         <label><span class="label">Telefon</span><input class="input" name="phone" value="${esc(a.phone)}" maxlength="40"></label>
         <label><span class="label">Mas'ul shaxs</span><input class="input" name="contact" value="${esc(a.contact)}" maxlength="120"></label>
+        <label><span class="label">Ustama, % (mijoz narxi = netto + foiz)</span><input class="input" name="markup" type="number" min="0" max="50" step="0.5" value="${esc(a.markup != null ? a.markup : 10)}"></label>
         <p class="hint">Login: <code>${esc(a.login)}</code> (o'zgarmaydi)</p>
         <div class="btn-row"><button class="btn btn-dark" type="submit">Saqlash</button><button type="button" class="btn" data-close>Bekor</button></div>
       </form>`);
@@ -683,6 +760,15 @@
       const url = prompt('Operator sayti (https://...)'); if (!url) return;
       const r = await act(() => agentApi('/websites', 'POST', { name, url }));
       if (r) { toast('Operator qo\'shildi (holati: ulanmagan).'); loadAgents(); }
+      return;
+    }
+
+    if (what === 'unban' || what === 'banIp') {
+      if (what === 'banIp' && !confirm(id + ' 1 kunga bloklansinmi?')) return;
+      btn.disabled = true;
+      const res = await act(() => api(what === 'unban' ? '/security/unban' : '/security/ban', what === 'unban' ? { ip: id } : { ip: id, minutes: 1440, reason: 'admin: kuzatuvdan' }));
+      btn.disabled = false;
+      if (res) { toast(what === 'unban' ? id + ' blokdan chiqarildi.' : id + ' bloklandi.'); loadSecurity(); }
       return;
     }
 
@@ -770,6 +856,12 @@
       r = await act(() => api('/tariffs', { id: form.dataset.id, price: Number(data.price), active: !!data.active }));
       if (r) toast(tariffName(r.months) + ' tarif saqlandi.');
     }
+    if (kind === 'ban') {
+      const res = await act(() => api('/security/ban', { ip: data.ip.trim(), minutes: Number(data.minutes), reason: data.reason || 'qo\'lda' }));
+      if (submit) submit.disabled = false;
+      if (res) { form.reset(); toast(res.ip + ' bloklandi.'); loadSecurity(); }
+      return;
+    }
     // ---- Agentlar ----
     if (kind === 'agcmd' || kind === 'agsearch' || kind === 'agsettings') {
       let a = null;
@@ -816,6 +908,7 @@
       state.stats = stats; state.bookings = list.bookings; state.today = list.today;
       state.agencies = ag.agencies; state.payments = pay.payments; state.tariffs = tar.tariffs;
       if (state.tab === 'agents') return loadAgents();
+      if (state.tab === 'security') return loadSecurity();
       if (!editing()) draw();
     } catch (err) {
       if (err.status === 401) showLogin('Sessiya tugadi, qayta kiring.');
@@ -862,7 +955,7 @@
   function route() {
     const h = location.hash.slice(1);
     state.tab = TABS.some(t => t[0] === h) ? h : 'overview';
-    if (document.getElementById('view')) { draw(); if (state.tab === 'agents') loadAgents(); }
+    if (document.getElementById('view')) { draw(); if (state.tab === 'agents') loadAgents(); if (state.tab === 'security') loadSecurity(); }
   }
   window.addEventListener('hashchange', route);
 
