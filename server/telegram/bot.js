@@ -591,6 +591,17 @@ function createTelegramBot({ token, db, accounts, live, root, demo = false, open
       ];
       await api.call('setMyCommands', { commands: cmds('uz') }).catch(() => {});
       await api.call('setMyCommands', { commands: cmds('ru'), language_code: 'ru' }).catch(() => {});
+      // Bot profilidagi tavsif (foydalanuvchi /start bosishdan oldin ko'radi)
+      const about = {
+        uz: ['TezBooking — tur agentliklar uchun bot. Tur operatorlarning haqiqiy narxlaridan eng yaxshi turlarni topib, kanalingiz uchun tayyor post yozadi: mehmonxona, qayerdan va qachon uchish, necha kecha, narx (sizning foizingiz bilan) va rasm. O\'zbek va rus tillarida.',
+          'Tur agentliklar uchun kanal postlari — haqiqiy narxlar bilan'],
+        ru: ['TezBooking — бот для турагентств. Находит лучшие туры по реальным ценам туроператоров и пишет готовый пост для вашего канала: отель, откуда и когда вылет, сколько ночей, цена (с вашей наценкой) и фото. На русском и узбекском.',
+          'Посты для каналов турагентств — по реальным ценам']
+      };
+      await api.call('setMyDescription', { description: about.uz[0] }).catch(() => {});
+      await api.call('setMyShortDescription', { short_description: about.uz[1] }).catch(() => {});
+      await api.call('setMyDescription', { description: about.ru[0], language_code: 'ru' }).catch(() => {});
+      await api.call('setMyShortDescription', { short_description: about.ru[1], language_code: 'ru' }).catch(() => {});
       log.log('  Telegram bot:             @' + me.username + (demo ? '  (DEMO narxlar)' : '') + (allowAll ? '  (ochiq rejim)' : ''));
     } catch (e) {
       log.error('[telegram] botni ishga tushirib bo\'lmadi:', e.description || e.message);
