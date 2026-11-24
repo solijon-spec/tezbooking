@@ -57,6 +57,9 @@ Uchala bo'limdan ham variantni **mijozga taklif**ga qo'shish mumkin — bitta ta
    Kanal ulash: botni kanalga **admin** qiling («Post yozish» huquqi) va `@kanal` ni yuboring — bot o'zi va siz admin ekaningizni tekshiradi.
 6. **📤 Kanalga joylash** — bir tugma bilan (kuniga 40 tagacha).
 
+Bot profil rasmi — TezBooking logosi (`images/telegram-bot-avatar.jpg`, 640×640, `logo-mark.png` dan). Botda rasm bo'lmasa,
+server ishga tushganda o'zi o'rnatadi; boshqa rasmni BotFather → `/setuserpic` orqali qo'ysangiz, almashtirilmaydi.
+
 Narxlar faqat haqiqiy (server/live, 10 daqiqa kesh — sayt bilan umumiy). Operatorlar javob bermasa, bot buni ochiq aytadi, o'ylab topilgan
 tur chiqarmaydi. `npm run demo` yoki `TELEGRAM_DEMO=1` da namunaviy narxlar ishlatiladi va postning boshida **DEMO** deb yoziladi.
 Bot long polling bilan ishlaydi — serverga tashqaridan webhook manzil ochish shart emas.

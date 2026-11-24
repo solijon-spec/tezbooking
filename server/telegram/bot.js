@@ -602,6 +602,15 @@ function createTelegramBot({ token, db, accounts, live, root, demo = false, open
       await api.call('setMyShortDescription', { short_description: about.uz[1] }).catch(() => {});
       await api.call('setMyDescription', { description: about.ru[0], language_code: 'ru' }).catch(() => {});
       await api.call('setMyShortDescription', { short_description: about.ru[1], language_code: 'ru' }).catch(() => {});
+      // Profil rasmi: botda rasm bo'lmasa — TezBooking logosi (images/telegram-bot-avatar.jpg). Bor rasm almashtirilmaydi.
+      try {
+        const avatar = path.join(root, 'images', 'telegram-bot-avatar.jpg');
+        const photos = await api.call('getUserProfilePhotos', { user_id: me.id, limit: 1 });
+        if (photos && photos.total_count === 0 && fs.existsSync(avatar)) {
+          await api.upload('setMyProfilePhoto', { photo: { type: 'static', photo: 'attach://avatar' } }, 'avatar', avatar);
+          log.log('  Telegram bot:             profil rasmi o\'rnatildi (TezBooking logosi)');
+        }
+      } catch (e) { log.warn('[telegram] profil rasmini o\'rnatib bo\'lmadi:', e.description || e.message); }
       log.log('  Telegram bot:             @' + me.username + (demo ? '  (DEMO narxlar)' : '') + (allowAll ? '  (ochiq rejim)' : ''));
     } catch (e) {
       log.error('[telegram] botni ishga tushirib bo\'lmadi:', e.description || e.message);
