@@ -342,18 +342,19 @@
   // Server: server/owner/*. Bu yerda ishchilar operator saytlariga bormaydi — takliflar saytning demo narx
   // generatoridan (js/data.js, TB.offersFor) olinadi. Holat vaqtga qarab hisoblanadi: sahifa yangilansa ham
   // vazifa "bajarilishda" davom etadi.
-  const AG_SITES = [   // [id, nomi, sayt, js/data.js dagi operator id, demo ishchi bormi]
+  // 6-ustun: agentlik kabinetiga login bilan kiradimi (serverda .env dagi OPERATOR_<ID>_LOGIN; demoda faqat holat ko'rsatiladi)
+  const AG_SITES = [   // [id, nomi, sayt, js/data.js dagi operator id, demo ishchi bormi, kabinet logini]
     ['aqua', 'Aqua Travel', 'https://agency.aqua-travelgroup.com/tour-package', 'aqua', 0],
-    ['asialuxe', 'Asialuxe', 'https://b2b.asialuxe.uz/login', 'asialuxe', 0],
-    ['crystalbay', 'Crystal Bay', 'https://booking.crystalbay.com/search_tour', 'crystalbay', 0],
-    ['kompas', 'Kompas Tour', 'https://online.uz.kompastour.com/search_tour', 'kompas', 1],
-    ['prestige', 'Prestige', 'http://online.uz-prestige.com/', 'prestige', 1],
-    ['pegas', 'Pegas', 'https://uz.pegast.asia/PackageSearch', 'pegas', 0],
-    ['vietra', 'Vietra Tour', 'https://b2b.vietratour.com/', 'vietratour', 0],
-    ['fstravel', 'FS Travel', 'https://b2b.fstravel.asia/menu?samo_action=logon', 'fstravel', 1],
-    ['kazunion', 'Kazunion', 'https://online.kazunion.com/', 'kazunion', 1],
+    ['asialuxe', 'Asialuxe', 'https://b2b.asialuxe.uz/login', 'asialuxe', 1, 1],
+    ['crystalbay', 'Crystal Bay', 'https://booking.crystalbay.com/search_tour', 'crystalbay', 1, 1],
+    ['kompas', 'Kompas Tour', 'https://online.uz.kompastour.com/search_tour', 'kompas', 1, 1],
+    ['prestige', 'Prestige', 'http://online.uz-prestige.com/', 'prestige', 1, 1],
+    ['pegas', 'Pegas', 'https://uz.pegast.asia/PackageSearch', 'pegas', 1, 1],
+    ['vietra', 'Vietra Tour', 'https://b2b.vietratour.com/', 'vietratour', 1, 1],
+    ['fstravel', 'FS Travel', 'https://b2b.fstravel.asia/menu?samo_action=logon', 'fstravel', 1, 1],
+    ['kazunion', 'Kazunion', 'https://online.kazunion.com/', 'kazunion', 1, 1],
     ['kazunion-uae', 'Kazunion UAE', 'https://uae.kazunion.com', 'kazunionae', 0],
-    ['centrum', 'Centrum Holidays', 'https://online.centrum-holidays.com/search_tour', 'centrum', 0],
+    ['centrum', 'Centrum Holidays', 'https://online.centrum-holidays.com/search_tour', 'centrum', 1, 1],
     ['flykhiva', 'Fly Khiva', 'https://b2b.flykhiva.travel/search_tour', 'flykhiva', 1],
     ['easybooking', 'Easybooking', 'https://tours.easybooking.uz/search_tour', 'easybooking', 1],
     ['selfie', 'Selfie Travel', 'http://b2b.selfietravel.kz/search_tour', 'selfie', 1],
@@ -382,7 +383,28 @@
       };
       save();
     }
+    // Avvalgi demo nusxasi (brauzerda saqlangan): yangi ulangan ishchilar va kabinet logini qo'shiladi, foydalanuvchi o'chirganlari o'zgarmaydi
+    if (d.agents.v !== 2) {
+      d.agents.sites.forEach(s => {
+        const row = AG_SITES.find(r => r[0] === s.id);
+        if (row && row[4] && !s.worker) Object.assign(s, { worker: true, enabled: true, integrationStatus: 'verified' });
+      });
+      d.agents.v = 2;
+      save();
+    }
     return d.agents;
+  }
+  const hasLogin = (siteId) => { const row = AG_SITES.find(r => r[0] === siteId); return !!(row && row[5]); };
+  // Mehmonxona nomi mosligi (server/live/hotel-match.js bilan bir xil qoida, eski nom va yulduz hisobga olinmaydi)
+  const HOTEL_GENERIC = ['hotel', 'hotels', 'otel', 'отель', 'resort', 'resorts', 'spa', 'the', 'and', 'by'];
+  const hWords = (s) => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').filter(Boolean);
+  function hotelMatch(name, wanted) {
+    const core = String(wanted || '').replace(/\([^)]*\)/g, ' ').replace(/(^|[\s,.;-])(ex|former|formerly)([.\s-]).*$/i, '$1').replace(/\b\d\s*\*+|\*+|★+/g, ' ');
+    const all = hWords(core.trim() ? core : wanted).filter(w => w.length >= 2 || /\d/.test(w));
+    const key = all.filter(w => HOTEL_GENERIC.indexOf(w) < 0);
+    const tokens = key.length ? key : all;
+    const text = ' ' + hWords(name).join(' ');
+    return !tokens.length || tokens.every(t => text.indexOf(' ' + t) >= 0);
   }
   const opOf = (site) => (window.TB.OPS || []).find(o => o.id === site.op);
   // Ishchining shu yo'nalishni sotishi: js/data.js dagi operator cheklovlari (countries, hotelOnly)
@@ -399,10 +421,12 @@
       ages.length <= 4 && ages.every(a => Number.isInteger(a) && a >= 0 && a <= 17) &&
       (p.budget == null || (Number.isFinite(p.budget) && p.budget > 0)) && (p.currency == null || ['USD', 'EUR', 'UZS'].includes(String(p.currency).toUpperCase())) &&
       (p.departureAirport == null || window.TB.FROM.some(f => f.id === p.departureAirport)) &&
-      (p.hotelStars == null || (Number.isInteger(p.hotelStars) && p.hotelStars >= 1 && p.hotelStars <= 5));
+      (p.hotelStars == null || (Number.isInteger(p.hotelStars) && p.hotelStars >= 1 && p.hotelStars <= 5)) &&
+      (p.hotelName == null || p.hotelName === '' || (typeof p.hotelName === 'string' && p.hotelName.length <= 80));
     return ok ? { destination: p.destination.trim(), country, date: p.date, nights: p.nights, adults: p.adults, childrenAges: ages,
       budget: p.budget == null ? null : p.budget, currency: String(p.currency || 'USD').toUpperCase(), mealPlan: p.mealPlan || null,
-      hotelStars: p.hotelStars == null ? null : p.hotelStars, departureAirport: p.departureAirport || null } : null;
+      hotelStars: p.hotelStars == null ? null : p.hotelStars, departureAirport: p.departureAirport || null,
+      hotelName: typeof p.hotelName === 'string' && p.hotelName.trim() ? p.hotelName.replace(/\s+/g, ' ').trim() : null } : null;
   }
   const ASK_FIELDS = ['destination', 'country', 'date', 'adults', 'nights', 'childrenAges'];
   function missingOf(p, suggested) {
@@ -422,6 +446,8 @@
     let hotels = TB.HOTELS.filter(h => h.country === p.country);
     const inCity = hotels.filter(h => city.indexOf(h.city) === 0 || h.city.indexOf(city) === 0);
     if (inCity.length) hotels = inCity;
+    // Mehmonxona bo'yicha topshiriq: faqat shu mehmonxona (kurortdan qat'i nazar, davlat ichida)
+    if (p.hotelName) hotels = TB.HOTELS.filter(h => h.country === p.country && hotelMatch(h.name, p.hotelName));
     const q = { from: p.departureAirport || 'tas', nights: p.nights, adults: p.adults, childAges: p.childrenAges, rooms: 1 };
     const rate = p.currency === 'UZS' ? TB.UZS_RATE : p.currency === 'EUR' ? 0.92 : 1;
     const list = [];
@@ -495,8 +521,11 @@
   function siteView(s, tasks, now) {
     const running = tasks.some(t => t.workers.some(w => w.site === s.id && workerState(t, w, now) === 'running'));
     const last = Math.max(0, ...[].concat(...tasks.map(t => t.workers.filter(w => w.site === s.id && workerState(t, w, now) === 'completed').map(w => w.end))));
+    // Kabinet: login bor operatorga birinchi qidiruvdan keyin "Kirildi", undan oldin "Login bor"
+    const login = s.worker && hasLogin(s.id);
     return { id: s.id, name: s.name, url: s.url, enabled: s.enabled, integrationStatus: s.integrationStatus,
-      workerStatus: !s.worker ? 'pending' : running ? 'running' : 'idle', lastSuccessfulSearch: last || null };
+      workerStatus: !s.worker ? 'pending' : running ? 'running' : 'idle', lastSuccessfulSearch: last || null,
+      authStatus: !login ? 'not_configured' : last ? 'authenticated' : 'required', lastSuccessfulLogin: login && last ? last : null };
   }
 
   function agentsRoute(method, r, search, body, hdr) {
@@ -567,7 +596,7 @@
     if (r === '/searches' && method === 'POST') {
       const params = validParams(body.parameters);
       if (!params) return err(400, 'bad_search_parameters');
-      const out = createTask(params, '', hdr['idempotency-key']);
+      const out = createTask(params, typeof body.command === 'string' ? body.command.slice(0, 400) : '', hdr['idempotency-key']);
       return json(out.duplicate ? 200 : 201, out);
     }
     let m = r.match(/^\/searches\/([\w-]+)\/cancel$/);
