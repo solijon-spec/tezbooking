@@ -39,7 +39,8 @@ function validateUrl(value, allowedOrigin) {
   return url;
 }
 
-function requestOnce(url, { headers, signal, addresses, timeoutMs, maxResponseBytes }) {
+// method/body — operator kabinetiga kirish (login formasi POST) uchun; qidiruvlar GET bo'lib qoladi
+function requestOnce(url, { method = 'GET', body, headers, signal, addresses, timeoutMs, maxResponseBytes }) {
   return new Promise((resolve, reject) => {
     const transport = url.protocol === 'https:' ? https : http;
     let settled = false;
@@ -59,7 +60,9 @@ function requestOnce(url, { headers, signal, addresses, timeoutMs, maxResponseBy
 
     // agent: false — Node'ning umumiy keep-alive agenti ulanishga 5 soniyalik "timeout" qo'yadi va u req.setTimeout'dan
     // oldin ishga tushib, sekin javob beradigan operatorlarni 25 soniya o'rniga 5 soniyada uzib qo'yardi.
-    const req = transport.request(url, { method: 'GET', headers, signal, lookup, agent: false, timeout: timeoutMs }, (res) => {
+    const payload = body == null ? null : Buffer.from(String(body), 'utf8');
+    const allHeaders = payload ? Object.assign({}, headers, { 'Content-Length': String(payload.length) }) : headers;
+    const req = transport.request(url, { method, headers: allHeaders, signal, lookup, agent: false, timeout: timeoutMs }, (res) => {
       const status = res.statusCode || 502;
       const responseHeaders = Object.assign({}, res.headers, {
         getSetCookie: () => res.headers['set-cookie'] || []
@@ -95,7 +98,7 @@ function requestOnce(url, { headers, signal, addresses, timeoutMs, maxResponseBy
 
     req.setTimeout(timeoutMs, () => req.destroy(Object.assign(new Error('supplier request timed out'), { code: 'ETIMEDOUT' })));
     req.on('error', error => finish(reject, error));
-    req.end();
+    req.end(payload || undefined);
   });
 }
 
@@ -103,6 +106,9 @@ function createSafeFetch({ lookup = dns.lookup, request = requestOnce, maxRedire
   return async function safeFetch(value, options = {}) {
     const allowedOrigin = options.allowedOrigin;
     let url = validateUrl(value, allowedOrigin);
+    let method = String(options.method || 'GET').toUpperCase();
+    let body = options.body;
+    let headers = options.headers || {};
 
     for (let redirects = 0; ; redirects++) {
       url = validateUrl(url, allowedOrigin);
@@ -114,13 +120,21 @@ function createSafeFetch({ lookup = dns.lookup, request = requestOnce, maxRedire
       }
 
       const response = await request(url, {
-        headers: options.headers || {}, signal: options.signal, addresses, timeoutMs, maxResponseBytes
+        method, body, headers, signal: options.signal, addresses, timeoutMs, maxResponseBytes
       });
       if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+      // redirect: 'manual' — yo'naltirish javobi o'zi qaytariladi (login javobidagi cookie'larni o'qish uchun)
+      if (options.redirect === 'manual') return response;
       if (redirects >= maxRedirects || !response.headers.location) {
         throw Object.assign(new Error('supplier redirect rejected'), { code: 'LIVE_UNSAFE_REDIRECT' });
       }
       url = new URL(response.headers.location, url);
+      // Brauzerdagidek: POST dan keyingi 301/302/303 — GET, tanasiz
+      if (method !== 'GET' && response.status !== 307 && response.status !== 308) {
+        method = 'GET';
+        body = undefined;
+        headers = Object.fromEntries(Object.entries(headers).filter(([name]) => !/^content-(type|length)$/i.test(name)));
+      }
     }
   };
 }

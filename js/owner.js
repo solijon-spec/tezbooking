@@ -99,8 +99,8 @@
     return `<article class="card stat-card"><div class="card-label">${label}<span class="card-icon">${icon}</span></div><strong class="stat-value">${value}</strong><small class="stat-note">${note}</small></article>`;
   }
   function tag(label, type = 'pending') {
-    const kind = /verified|complete|online|resolved/i.test(label) ? 'ready'
-      : /failed|error|critical/i.test(label) ? 'error'
+    const kind = /verified|complete|online|resolved|authenticated/i.test(label) ? 'ready'
+      : /failed|error|critical|manual_action/i.test(label) ? 'error'
         : /running|queued/i.test(label) ? 'blue' : type;
     return `<span class="tag tag-${kind}">${escapeHtml(label.replace(/_/g, ' '))}</span>`;
   }
@@ -173,7 +173,7 @@
       '<button class="button button-primary" data-action="add-website">＋ Add source</button>') +
       `<article class="card">
         <div class="card-head"><div><h2>Source registry</h2><p>Configuration is not an operational integration.</p></div><div class="toolbar"><input class="search-input" id="operator-filter" placeholder="Filter operators…" value="${escapeHtml(state.filter)}" aria-label="Filter operators"></div></div>
-        ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Operator</th><th>Integration</th><th>Worker</th><th>Enabled</th><th>Last verified search</th></tr></thead><tbody>${rows.map(site => `<tr><td><strong>${escapeHtml(site.name)}</strong><small>${escapeHtml(site.url)}</small></td><td>${tag(site.integrationStatus)}</td><td>${tag(site.workerStatus)}</td><td><label class="switch" aria-label="Enable ${escapeHtml(site.name)}"><input type="checkbox" data-site-toggle="${escapeHtml(site.id)}" ${site.enabled ? 'checked' : ''}><span></span></label></td><td>${escapeHtml(formatDate(site.lastSuccessfulSearch))}</td></tr>`).join('')}</tbody></table></div>` : empty('No matching operators', 'Try another name or URL.') }
+        ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Operator</th><th>Integration</th><th>Worker</th><th>Account login</th><th>Enabled</th><th>Last verified search</th></tr></thead><tbody>${rows.map(site => `<tr><td><strong>${escapeHtml(site.name)}</strong><small>${escapeHtml(site.url)}</small></td><td>${tag(site.integrationStatus)}</td><td>${tag(site.workerStatus)}</td><td>${tag(site.authStatus || 'not_configured')}</td><td><label class="switch" aria-label="Enable ${escapeHtml(site.name)}"><input type="checkbox" data-site-toggle="${escapeHtml(site.id)}" ${site.enabled ? 'checked' : ''}><span></span></label></td><td>${escapeHtml(formatDate(site.lastSuccessfulSearch))}</td></tr>`).join('')}</tbody></table></div>` : empty('No matching operators', 'Try another name or URL.') }
       </article>
       <p class="form-hint" style="margin:12px 2px">Unsafe or HTTP-only endpoints are not accepted for new configurations. No credentials are stored in the registry.</p>`;
   }

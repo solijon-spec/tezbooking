@@ -41,6 +41,8 @@ const DESTINATIONS = [
   ['Phuket', 'th', ['phuket', 'pxuket', 'puket', 'пхукет']],
   ['Bangkok', 'th', ['bangkok', 'бангкок']],
   ['Nha Trang', 'vn', ['nha trang', 'nyachang', 'нячанг']],
+  ['Phu Quoc', 'vn', ['phu quoc', 'fukuok', 'fukuoq', 'фукуок', 'фу куок']],
+  ['Da Nang', 'vn', ['da nang', 'danang', 'дананг', 'да нанг']],
   ['Bali', 'id', ['bali', 'бали']],
   ['Colombo', 'lk', ['colombo', 'kolombo', 'коломбо']],
   ['Male', 'mv', ['male', 'мале']],
@@ -141,13 +143,77 @@ function parseChildren(text) {
   return { ages, childCount };
 }
 
+// ---------- Mehmonxona nomi ----------
+// Uch xil yozilishi tushuniladi (birinchi topilgani olinadi):
+//   1) qo'shtirnoqda: "Rixos Premium Belek", «Camia Resort»
+//   2) kalit so'zdan keyin: "hotel Camia Resort, ...", "mehmonxona: Rixos Belek", "отель Rixos Premium 5*"
+//   3) KATTA HARFLI 2+ so'z (operatorlar shunday yozadi): "CAMIA RESORT 4* - PHU QUOC NORTH"
+// Nomdan joy nomlari (davlat, kurort, uchish shahri), ovqatlanish, valyuta va "tur/paket" so'zlari olib tashlanadi.
+const HOTEL_KEYWORD = /(?:^|[^\p{L}])(?:hotel|otel|mehmonxona|меҳмонхона|мехмонхона|отель|гостиница)(?![\p{L}])\s*[:\-–—]?\s*([^,;\n|]*)/iu;
+const NAME_STOP = new Set(['all', 'inclusive', 'ultra', 'uai', 'ai', 'bb', 'hb', 'fb', 'ro', 'usd', 'eur', 'uzs', 'tur', 'tour', 'тур',
+  'paket', 'package', 'пакет', 'hotel', 'otel', 'отель', 'mehmonxona', 'north', 'south', 'east', 'west', 'gacha', 'dan', 'ga']);
+const plainWord = (w) => w.toLocaleLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}&']+/gu, '');
+let placeWordLists = null;
+function placeLists() {
+  if (!placeWordLists) {
+    const aliases = [].concat(...DESTINATIONS.map(d => [d[0]].concat(d[2])), ...COUNTRIES.map(c => c[1]), ...FROM_CITIES.map(c => c[1]));
+    placeWordLists = [...new Set(aliases.map(a => a.toLocaleLowerCase()))]
+      .map(a => a.split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(plainWord)).filter(list => list.length && list.join('').length >= 3)
+      .sort((a, b) => b.length - a.length);
+  }
+  return placeWordLists;
+}
+function cleanHotelName(raw) {
+  // Yulduzdan ("4*", "5 yulduz") va raqamdan (sana, kecha, kishi) keyingi qism — nomga kirmaydi
+  const words = String(raw || '').replace(/[«»"“”„]/g, ' ').split(/\s+/).filter(Boolean);
+  const cut = words.findIndex(w => /\d|\*/.test(w) || /^[-–—]$/.test(w));
+  const kept = (cut < 0 ? words : words.slice(0, cut));
+  const plain = kept.map(plainWord);
+  const drop = new Array(kept.length).fill(false);
+  placeLists().forEach(list => {
+    for (let i = 0; i + list.length <= plain.length; i++) {
+      if (list.every((w, j) => plain[i + j] === w)) for (let j = 0; j < list.length; j++) drop[i + j] = true;
+    }
+  });
+  const name = kept.filter((w, i) => !drop[i] && plain[i] && !NAME_STOP.has(plain[i])).join(' ')
+    .replace(/^[\s,.:;-]+|[\s,.:;-]+$/g, '');
+  return name.replace(/[^\p{L}\p{N}]/gu, '').length >= 3 && name.length <= 80 ? name : null;
+}
+function parseHotelName(text) {
+  const quoted = text.match(/["«“„]([^"«»“”„\n]{3,80})["»”“]/u);
+  if (quoted) {
+    const name = cleanHotelName(quoted[1]);
+    if (name) return name;
+  }
+  const keyword = text.match(HOTEL_KEYWORD);
+  if (keyword) {
+    const name = cleanHotelName(keyword[1].split(/\s[-–—]\s/)[0]);
+    if (name) return name;
+  }
+  const caps = /(?:^|[^\p{L}\p{N}])([A-Z][A-Z0-9'’&.]*(?:\s+(?:&|[A-Z][A-Z0-9'’&.]*))+)(?![\p{L}])/gu;
+  let m;
+  while ((m = caps.exec(text))) {
+    const name = cleanHotelName(m[1]);
+    if (name) return name;
+  }
+  return null;
+}
+
 function parseNaturalLanguage(text) {
   const normalized = normalizedText(text);
-  const destination = DESTINATIONS.find(([, , aliases]) => aliases.some(alias => includesWord(normalized, alias)));
+  let destination = DESTINATIONS.find(([, , aliases]) => aliases.some(alias => includesWord(normalized, alias)));
   let country = destination ? destination[1] : null;
+  let countryOnly = null;
   if (!country) {
     const found = COUNTRIES.find(([, aliases]) => aliases.some(alias => includesWord(normalized, alias)));
     country = found ? found[0] : null;
+    countryOnly = found;
+  }
+  const hotelName = parseHotelName(text);
+  // Mehmonxona nomi bor, kurort yozilmagan — butun davlat bo'yicha (mehmonxona joyni o'zi belgilaydi)
+  if (!destination && hotelName && countryOnly) {
+    const label = countryOnly[1][0];
+    destination = [label.length <= 3 ? label.toUpperCase() : label.replace(/^./, c => c.toUpperCase()), countryOnly[0], []];
   }
 
   // \b kirill harflarida ishlamaydi — shuning uchun (?![\p{L}]) ishlatiladi
@@ -196,10 +262,11 @@ function parseNaturalLanguage(text) {
     budget: Number.isFinite(budget) ? budget : null,
     currency,
     hotelStars: starsMatch ? Number(starsMatch[1]) : null,
-    departureAirport: from ? from[0] : null
+    departureAirport: from ? from[0] : null,
+    hotelName
   };
   return { parameters, missing: [...new Set(missing)], mode: 'deterministic' };
 }
 
-return { parseNaturalLanguage, countryCode, COUNTRIES, DESTINATIONS, FROM_CITIES };
+return { parseNaturalLanguage, parseHotelName, countryCode, COUNTRIES, DESTINATIONS, FROM_CITIES };
 });

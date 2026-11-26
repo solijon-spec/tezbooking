@@ -40,6 +40,8 @@
   };
   const INT_ST = { verified: ['ok', 'Tasdiqlangan'], pending: ['past', 'Ulanmagan'], failed: ['off', 'Xato'] };
   const WORK_ST = { pending: ['past', 'O\'rnatilmagan'], idle: ['ok', 'Tayyor'], running: ['wait', 'Ishlamoqda'], paused: ['past', 'Pauza'], failed: ['off', 'Xato'] };
+  // Operator kabineti: login .env da (OPERATOR_<ID>_LOGIN/_PASSWORD); parol panelga kelmaydi — faqat holat
+  const AUTH_ST = { not_configured: ['past', 'Loginsiz'], required: ['wait', 'Login bor'], authenticated: ['ok', 'Kirildi'], manual_action: ['off', 'Kirib bo\'lmadi'] };
   const ASK = {
     destination: 'Qaysi shahar yoki kurort?', country: 'Qaysi davlat?', date: 'Uchish sanasi qachon? (masalan: 15-dekabr yoki 2026-12-15)',
     adults: 'Necha katta kishi?', nights: 'Necha kecha?', childrenAges: 'Bolalar yoshi necha?',
@@ -568,6 +570,7 @@ ${(s.watch || []).length ? `
       <label><span class="label">Qayerdan</span><select class="input input-sm" name="departureAirport"><option value="">Toshkent (sukut)</option>${FROM_OPTS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
       <label><span class="label">Ovqatlanish</span><select class="input input-sm" name="mealPlan"><option value="">Farqi yo'q</option>${Object.keys(MEAL_UZ).map(k => `<option value="${k}">${k} — ${MEAL_UZ[k]}</option>`).join('')}</select></label>
       <label><span class="label">Yulduz (kamida)</span><select class="input input-sm" name="hotelStars"><option value="">Farqi yo'q</option><option>3</option><option>4</option><option>5</option></select></label>
+      <label><span class="label">Mehmonxona</span><input class="input input-sm" name="hotelName" maxlength="80" placeholder="ixtiyoriy: Camia Resort"></label>
       <button class="btn btn-dark" type="submit">Navbatga qo'yish</button>
     </form>
   </details>
@@ -605,12 +608,13 @@ ${(s.watch || []).length ? `
   </div>
   <p class="hint ad-hint">Agent faqat <b>yoqilgan</b>, <b>tasdiqlangan</b> va ishchisi o'rnatilgan operatorlarga topshiriq yuboradi.</p>
   <div class="ad-scroll"><table class="ad-table">
-    <thead><tr><th>Operator</th><th>Integratsiya</th><th>Ishchi</th><th>Oxirgi muvaffaqiyatli qidiruv</th><th>Yoqilgan</th></tr></thead>
+    <thead><tr><th>Operator</th><th>Integratsiya</th><th>Ishchi</th><th>Kabinet</th><th>Oxirgi muvaffaqiyatli qidiruv</th><th>Yoqilgan</th></tr></thead>
     <tbody>${sites2.map(s => `
       <tr class="${s.enabled ? '' : 'is-off'}">
         <td data-th="Operator"><b>${esc(s.name)}</b><span class="hint ad-sub">${esc(s.url)}</span></td>
         <td data-th="Integratsiya">${badge(INT_ST, s.integrationStatus)}</td>
         <td data-th="Ishchi">${badge(WORK_ST, s.workerStatus)}</td>
+        <td data-th="Kabinet">${badge(AUTH_ST, s.authStatus || 'not_configured')}${s.lastSuccessfulLogin ? `<span class="hint ad-sub">${esc(stamp(s.lastSuccessfulLogin))}</span>` : ''}</td>
         <td data-th="Oxirgi qidiruv" class="nowrap">${esc(stamp(s.lastSuccessfulSearch))}</td>
         <td data-th="Yoqilgan"><label class="ad-switch"><input type="checkbox" data-site="${esc(s.id)}"${s.enabled ? ' checked' : ''} aria-label="${esc(s.name)} yoqilgan"><span></span></label></td>
       </tr>`).join('')}</tbody>
@@ -667,6 +671,8 @@ ${(s.watch || []).length ? `
     const ops = new Set(rows.map(o => o.operatorName)).size;
     const dmy = (iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '';
     const safeUrl = (u) => /^https?:\/\//i.test(u || '') ? u : '';
+    // Topshiriq o'zi bitta mehmonxona bo'yicha bo'lmasa — har bir mehmonxona uchun "barcha agentlar" qidiruvi tugmasi
+    const focusOk = !!(task.parameters && task.parameters.country && !task.parameters.hotelName);
     dialog(`
       <div class="row-between"><h2 id="dlg-title" class="h2">Natijalar</h2><button type="button" class="btn btn-sm" data-close>Yopish</button></div>
       <p class="muted">${esc(task.command || '')} · ${badge(TASK_ST, task.status)}</p>
@@ -678,7 +684,7 @@ ${(s.watch || []).length ? `
           const x = o.offer || {};
           const url = safeUrl(o.sourceUrl);
           return `<tr>
-          <td data-th="Mehmonxona"><b>${esc(o.hotelName)}</b>${x.hotelStars ? ' <span class="hint">' + '★'.repeat(x.hotelStars) + '</span>' : ''}${x.hotelLocation ? `<span class="hint ad-sub">${esc(x.hotelLocation)}</span>` : ''}</td>
+          <td data-th="Mehmonxona"><b>${esc(o.hotelName)}</b>${x.hotelStars ? ' <span class="hint">' + '★'.repeat(x.hotelStars) + '</span>' : ''}${x.hotelLocation ? `<span class="hint ad-sub">${esc(x.hotelLocation)}</span>` : ''}${focusOk ? `<button type="button" class="btn-link ad-sub" data-do="agHotel" data-id="${esc(task.id)}" data-hotel="${esc(o.hotelName)}" title="Barcha agentlar faqat shu mehmonxonaning turlarini qidiradi">Shu mehmonxona: barcha agentlar</button>` : ''}</td>
           <td data-th="Operator" class="nowrap">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(o.operatorName)} ↗</a>` : esc(o.operatorName)}</td>
           <td data-th="Sana" class="nowrap">${esc(dmy(x.checkIn))}${x.nights ? ' · ' + esc(x.nights) + ' kecha' : ''}${x.departure ? `<span class="hint ad-sub">✈ ${esc(x.departure)}</span>` : ''}</td>
           <td data-th="Ovqat / xona">${x.mealPlan && x.mealPlan !== 'unknown' ? `<b>${esc(x.mealPlan)}</b> <span class="hint">${esc(MEAL_UZ[x.mealPlan] || '')}</span>` : '—'}${x.roomType ? `<span class="hint ad-sub">${esc(x.roomType)}</span>` : ''}</td>
@@ -773,6 +779,18 @@ ${(s.watch || []).length ? `
     // Agentlar
     const agTask = state.ag.data && (state.ag.data.tasks || []).find(t => t.id === id);
     if (what === 'agOffers' && agTask) return showOffers(agTask);
+    // Natijalardagi mehmonxona: xuddi shu parametrlar + mehmonxona nomi bilan yangi topshiriq — barcha agentlar shu mehmonxonani qidiradi
+    if (what === 'agHotel' && agTask && agTask.parameters) {
+      const hotelName = String(btn.dataset.hotel || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+      if (!hotelName) return;
+      btn.disabled = true;
+      const parameters = Object.assign({}, agTask.parameters, { hotelName });
+      const command = hotelName + ': ' + (agTask.command || '');
+      const r = await act(() => agentApi('/searches', 'POST', { parameters, command: command.slice(0, 400) }, { 'Idempotency-Key': uid() }));
+      btn.disabled = false;
+      if (r) { document.getElementById('dlg').close(); agentQueued(r); }
+      return;
+    }
     if (what === 'agCancel' && agTask) {
       if (!confirm('Vazifa to\'xtatilsinmi?\n' + (agTask.command || ''))) return;
       btn.disabled = true;
@@ -910,7 +928,8 @@ ${(s.watch || []).length ? `
           nights: Number(data.nights), adults: Number(data.adults),
           childrenAges: ages ? ages.split(',').map(x => Number(x.trim())) : [],
           budget: data.budget ? Number(data.budget) : null, currency: data.currency, departureAirport: data.departureAirport || null,
-          mealPlan: data.mealPlan || null, hotelStars: data.hotelStars ? Number(data.hotelStars) : null
+          mealPlan: data.mealPlan || null, hotelStars: data.hotelStars ? Number(data.hotelStars) : null,
+          hotelName: String(data.hotelName || '').trim() || null
         };
         a = await act(() => agentApi('/searches', 'POST', { parameters }, { 'Idempotency-Key': uid() }));
         if (a) { form.reset(); agentQueued(a); }

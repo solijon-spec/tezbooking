@@ -71,7 +71,20 @@ function parseLiveQuery(kind, url, { countries, now = Date.now() }) {
   const nights = integerParam(params, 'nights', 1, 30);
   if (countryValues.length !== 1 || !hasCountry(countries, countryValues[0]) || nights === null) return null;
   if (kind === 'hotels') return { country: countryValues[0], date, nights, adults, childAges, window };
-  return { country: countryValues[0], date, nights, adults, childAges, from, window };
+  // Mehmonxona nomi (ixtiyoriy, agent topshirig'idan): operatorning o'zida shu mehmonxona bo'yicha filtr
+  const hotelValues = params.getAll('hotel');
+  if (hotelValues.length > 1) return null;
+  const hotel = hotelValues.length ? hotelValues[0].replace(/\s+/g, ' ').trim() : '';
+  if (hotel && (hotel.length > 80 || !/^[\p{L}\p{N} &'’.,()-]+$/u.test(hotel))) return null;
+  // Kurort/shahar (ixtiyoriy, agent topshirig'idan): ko'p shaharli operatorda (Asialuxe) avval shu shahar qidiriladi
+  const cityValues = params.getAll('city');
+  if (cityValues.length > 1) return null;
+  const city = cityValues.length ? cityValues[0].replace(/\s+/g, ' ').trim() : '';
+  if (city && (city.length > 60 || !/^[\p{L}\p{N} '’ʻ.-]+$/u.test(city))) return null;
+  const query = { country: countryValues[0], date, nights, adults, childAges, from, window };
+  if (hotel) query.hotel = hotel;
+  if (city) query.city = city;
+  return query;
 }
 
 module.exports = { validDate, parseLiveQuery, FROM_IDS };

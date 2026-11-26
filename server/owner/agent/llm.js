@@ -14,7 +14,8 @@ const SYSTEM_PROMPT = [
   'Return dates as YYYY-MM-DD only when explicit. Convert an explicit unambiguous date to ISO.',
   'Return adults and nights as integers; childrenAges as an array of integer ages.',
   'Allowed mealPlan values: RO, BB, HB, FB, AI, UAI. Currency: USD, EUR, UZS.',
-  'Return exactly a JSON object with keys destination, country, date, adults, nights, childrenAges, mealPlan, budget, currency, hotelStars, departureAirport.'
+  'hotelName is the specific hotel the user names (for example "Camia Resort"), without star rating or city; null when no hotel is named.',
+  'Return exactly a JSON object with keys destination, country, date, adults, nights, childrenAges, mealPlan, budget, currency, hotelStars, departureAirport, hotelName.'
 ].join(' ');
 
 function createLlmParser({

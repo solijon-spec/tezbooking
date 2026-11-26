@@ -22,7 +22,8 @@ function createScheduler({ service, workers, pollMs = 500, timeoutMs = null }) {
 
   function runClaimed(executionId, adapter, context, entry) {
     const settings = service.settings();
-    const timeout = Number.isInteger(timeoutMs) ? timeoutMs : settings.search_timeout_seconds * 1000;
+    const base = Number.isInteger(timeoutMs) ? timeoutMs : settings.search_timeout_seconds * 1000;
+    const timeout = Math.max(base, (adapter && adapter.timeoutMs) || 0);
     let timer;
     let timeoutResolve;
     const timeoutPromise = new Promise(resolve => { timeoutResolve = resolve; });

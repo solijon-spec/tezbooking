@@ -6,7 +6,8 @@ function createWorkerRegistry() {
   function register(adapter) {
     if (!adapter || typeof adapter.operatorId !== 'string' || !/^[a-z0-9-]{1,80}$/i.test(adapter.operatorId)
       || typeof adapter.execute !== 'function'
-      || (adapter.supports !== undefined && typeof adapter.supports !== 'function')) {
+      || (adapter.supports !== undefined && typeof adapter.supports !== 'function')
+      || (adapter.timeoutMs !== undefined && (!Number.isInteger(adapter.timeoutMs) || adapter.timeoutMs < 1 || adapter.timeoutMs > 600000))) {
       throw new TypeError('worker adapter must define operatorId, execute, and optional supports');
     }
     if (adapters.has(adapter.operatorId)) throw new Error('worker adapter already registered');
@@ -14,7 +15,9 @@ function createWorkerRegistry() {
       operatorId: adapter.operatorId,
       workerType: typeof adapter.workerType === 'string' ? adapter.workerType.slice(0, 60) : 'custom',
       supports: adapter.supports || (() => true),
-      execute: adapter.execute
+      execute: adapter.execute,
+      // Sekin operator (masalan Asialuxe) uchun kamida shuncha vaqt — umumiy sozlamadan katta bo'lsa shu ishlatiladi
+      timeoutMs: adapter.timeoutMs || null
     });
     adapters.set(registered.operatorId, registered);
     return () => adapters.delete(registered.operatorId);

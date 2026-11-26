@@ -18,8 +18,21 @@
 'use strict';
 
 const samo = require('./samo');
+const { hasCredentials } = require('./credentials');
+const pegas = require('./pegas');
+const asialuxe = require('./asialuxe');
 const { createConcurrencyLimiter, createRateLimiter } = require('./limits');
 const { parseLiveQuery } = require('./validation');
+
+// Ulagichlar: SAMO (sukut), Pegas va Asialuxe (faqat agentlik logini bilan)
+const ADAPTERS = { samo, pegas, asialuxe };
+const adapterOf = (op) => ADAPTERS[op && op.adapter] || samo;
+const unsupported = async () => ({ offers: [], note: 'no_page' });
+const DEFAULT_SEARCHES = {
+  tours: (op, q) => adapterOf(op).search(op, q),
+  hotels: (op, q) => (adapterOf(op).searchHotels || unsupported)(op, q),
+  flights: (op, q) => (adapterOf(op).searchFlights || unsupported)(op, q)
+};
 
 const OPERATORS = [
   { id: 'prestige', search: 'https://online.uz-prestige.com/search_tour' },
@@ -35,8 +48,14 @@ const OPERATORS = [
   { id: 'kompas', search: 'https://online.uz.kompastour.com/search_tour' },
   { id: 'centrum', search: 'https://online.centrum-holidays.com/search_tour' },
   // anex: 2026-11 dan SAMO emas (yangi Next.js sayt, search_tour 404) — API kaliti bilan ulanadi
-  { id: 'aqua', search: 'https://agency.aqua-travelgroup.com/search_tour' }
+  { id: 'aqua', search: 'https://agency.aqua-travelgroup.com/search_tour' },
+  // loginOnly: ochiq qidiruvi yo'q, faqat agentlik logini bilan (.env: OPERATOR_PEGAS_*, OPERATOR_ASIALUXE_*).
+  // Login bo'lsa — sayt, Telegram bot va agentlar qidiruvida; bo'lmasa — hech qayerga ulanmaydi.
+  { id: 'pegas', search: 'https://uz.pegast.asia/PackageSearch', adapter: 'pegas', loginOnly: true },
+  { id: 'asialuxe', search: 'https://b2b.asialuxe.uz/', adapter: 'asialuxe', loginOnly: true }
 ];
+// Sayt/bot qidiruvi bitta operatorni ko'pi bilan shuncha kutadi (Asialuxe sekin); qolganlar natijasi baribir qaytadi
+const SITE_WAIT_MS = Number(process.env.LIVE_SITE_WAIT_MS) || 50000;
 const CACHE_MS = 10 * 60000;
 const PER_OP = 400;
 const MAX_CACHE = 300;
@@ -70,6 +89,7 @@ function safeFailure(error) {
   if (error && (error.code === 'LIVE_QUEUE_FULL')) return { status: 'busy', error: 'busy' };
   if (error && (error.name === 'AbortError' || error.code === 'ETIMEDOUT')) return { status: 'error', error: 'timeout' };
   if (error && /^LIVE_UNSAFE_/.test(error.code || '')) return { status: 'error', error: 'source_blocked' };
+  if (error && /^LIVE_AUTH_/.test(error.code || '')) return { status: 'error', error: 'auth_failed' };
   return { status: 'error', error: 'upstream_unavailable' };
 }
 
@@ -77,10 +97,16 @@ function createLive({
   sendJson,
   clientIp = req => req.socket && req.socket.remoteAddress || 'unknown',
   operators = OPERATORS,
-  searches = { tours: samo.search, hotels: samo.searchHotels, flights: samo.searchFlights },
+  searches = DEFAULT_SEARCHES,
+  // operator kabinetiga kirish holati (parolsiz) — faqat ichki (agent ishchilari)
+  authStatus = (id) => adapterOf(operators.find(op => op.id === id)).authStatus(id),
   now = Date.now,
-  config
+  config,
+  siteWaitMs = SITE_WAIT_MS,
+  env = process.env
 }) {
+  // Sayt va Telegram bot: login talab qiladigan operator faqat login berilgan bo'lsa
+  const publicOperators = operators.filter(op => !op.loginOnly || hasCredentials(op.id, env));
   const settings = Object.assign(configFromEnv(), config || {});
   const cache = new Map();
   const health = {};
@@ -185,7 +211,13 @@ function createLive({
   }
 
   async function searchAll(kind, query) {
-    const results = await Promise.all(operators.map(operator => runOperator(kind, operator, query)));
+    // Sekin operator butun javobni ushlab turmasin: siteWaitMs dan keyin u "timeout" deb belgilanadi
+    const capped = (operator) => {
+      let timer;
+      const late = new Promise(resolve => { timer = setTimeout(() => resolve({ id: operator.id, status: 'error', error: 'timeout', count: 0, ms: siteWaitMs, offers: [] }), siteWaitMs); });
+      return Promise.race([runOperator(kind, operator, query), late]).finally(() => clearTimeout(timer));
+    };
+    const results = await Promise.all(publicOperators.map(capped));
     return {
       offers: [].concat(...results.map(result => result.offers)),
       operators: results.map(({ id, status, count, ms, error }) => ({ id, status, count, ms, error })),
@@ -214,7 +246,7 @@ function createLive({
     if (isStatus) {
       return sendJson(res, 200, {
         kinds: Object.keys(searches),
-        operators: operators.map(operator => Object.assign({ id: operator.id }, health[operator.id] || {}))
+        operators: publicOperators.map(operator => Object.assign({ id: operator.id }, health[operator.id] || {}))
       });
     }
 
@@ -291,7 +323,7 @@ function createLive({
     return Object.assign({}, result, { cached: false });
   }
 
-  return { handle, search, searchOne, OPERATORS: operators, stats: () => limiter.stats() };
+  return { handle, search, searchOne, authStatus, OPERATORS: operators, stats: () => limiter.stats() };
 }
 
 module.exports = { createLive, configFromEnv, parseLiveQuery, OPERATORS };

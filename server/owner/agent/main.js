@@ -15,7 +15,8 @@ const QUESTIONS = {
   budget: 'What budget and currency should I use?',
   currency: 'Which currency should I use for the budget?',
   mealPlan: 'Which meal plan should I search for (RO, BB, HB, FB, AI, or UAI)?',
-  hotelStars: 'What hotel star rating should I use (1 to 5)?'
+  hotelStars: 'What hotel star rating should I use (1 to 5)?',
+  hotelName: 'Which hotel should I search for (name up to 80 characters)?'
 };
 
 function createMainAgent({ service, workers, scheduler, llmParser, now = Date.now }) {
@@ -36,13 +37,20 @@ function createMainAgent({ service, workers, scheduler, llmParser, now = Date.no
     if (parameters.mealPlan != null && !['RO', 'BB', 'HB', 'FB', 'AI', 'UAI'].includes(String(parameters.mealPlan).toUpperCase())) missing.add('mealPlan');
     if (parameters.departureAirport != null && !FROM_IDS.includes(parameters.departureAirport)) missing.add('departureAirport');
     if (parameters.hotelStars != null && (!Number.isInteger(parameters.hotelStars) || parameters.hotelStars < 1 || parameters.hotelStars > 5)) missing.add('hotelStars');
+    if (parameters.hotelName != null && (typeof parameters.hotelName !== 'string' || parameters.hotelName.length > 80)) missing.add('hotelName');
     return [...missing];
   }
 
   function normalizeParsed(parameters) {
+    const country = countryCode(parameters.country);
+    const hotelName = typeof parameters.hotelName === 'string' && parameters.hotelName.trim()
+      ? parameters.hotelName.replace(/\s+/g, ' ').trim() : parameters.hotelName == null || parameters.hotelName === '' ? null : parameters.hotelName;
+    let destination = typeof parameters.destination === 'string' ? parameters.destination.trim() : '';
+    // Mehmonxona nomi bor, kurort yo'q — davlat bo'yicha qidiriladi (joyni mehmonxona belgilaydi)
+    if (!destination && country && typeof hotelName === 'string') destination = country.toUpperCase();
     const normalized = {
-      destination: typeof parameters.destination === 'string' ? parameters.destination.trim() : '',
-      country: countryCode(parameters.country),
+      destination,
+      country,
       date: typeof parameters.date === 'string' ? parameters.date : '',
       adults: parameters.adults,
       nights: parameters.nights,
@@ -52,7 +60,8 @@ function createMainAgent({ service, workers, scheduler, llmParser, now = Date.no
       currency: parameters.currency || 'USD',
       hotelStars: parameters.hotelStars == null ? null : parameters.hotelStars,
       mealPlan: parameters.mealPlan == null || parameters.mealPlan === '' ? null : String(parameters.mealPlan).toUpperCase(),
-      departureAirport: parameters.departureAirport || null
+      departureAirport: parameters.departureAirport || null,
+      hotelName
     };
     return normalized;
   }

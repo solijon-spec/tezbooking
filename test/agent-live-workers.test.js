@@ -78,8 +78,10 @@ test('taklif formati normalizatordan o\'tadi: uchish, GDS, mavjudlik, chiqish sa
   assert.equal(n.flightIncluded, true);
   assert.equal(n.verificationStatus, 'unverified');
   assert.deepEqual(liveParams(params({ childrenAges: [5, 9], departureAirport: 'skd' })), {
-    country: 'tr', date: params().date, nights: '7', adults: '2', from: 'skd', window: '3', children: '5,9'
+    country: 'tr', date: params().date, nights: '7', adults: '2', from: 'skd', window: '3', children: '5,9', city: 'Antalya'
   });
+  // Butun davlat (kurort yo'q) — shahar uzatilmaydi
+  assert.equal('city' in liveParams(params({ destination: 'Turkey' })), false);
 });
 
 test('tahlilchi: uchish shahri va yulduz matndan', () => {
@@ -138,7 +140,10 @@ test('to\'liq zanjir: 13 ta operator ulanadi, topshiriq navbat orqali takliflar 
     }
   };
   const registered = registerLiveWorkers({ live, service: f.service, workers: f.workers, maxOffers: 30 });
-  assert.equal(registered.length, Object.keys(SITE_TO_LIVE).length);
+  // Pegas va Asialuxe faqat login bilan — testda login yo'q, ular ulanmaydi
+  const loginOnly = OPERATORS.filter(op => op.loginOnly).map(op => op.id);
+  assert.deepEqual(loginOnly, ['pegas', 'asialuxe']);
+  assert.equal(registered.length, Object.keys(SITE_TO_LIVE).length - loginOnly.length);
   const sites = f.service.listWebsites();
   assert.equal(sites.filter(s => s.integrationStatus === 'verified').length, 13);
   assert.equal(sites.find(s => s.id === 'vietra').websiteType, 'samo');

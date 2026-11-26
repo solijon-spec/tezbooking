@@ -1,23 +1,31 @@
 'use strict';
 
 /*
- * Agent ishchilari (worker adapterlar) — saytning jonli qidiruvi orqali (server/live, SAMO ochiq qidiruv sahifalari).
+ * Agent ishchilari (worker adapterlar) — saytning jonli qidiruvi orqali (server/live, SAMO "Поиск тура" sahifalari).
  *
- * Main Agent topshirig'i (davlat, kurort, sana, kechalar, kishilar, ...) har bir ulangan operator ishchisiga tarqatiladi.
- * Ishchi shu operatorning ochiq "Поиск тура" sahifasidan turlarni oladi (sayt va Telegram bot bilan umumiy kesh),
- * so'ng topshiriq bo'yicha saralaydi: kurort/shahar, ovqatlanish, yulduz, byudjet. Login va himoya chetlab o'tilmaydi.
+ * Main Agent topshirig'i (davlat, kurort, sana, kechalar, kishilar, mehmonxona, ...) har bir ulangan operator ishchisiga tarqatiladi.
+ * Ishchi shu operatorning "Поиск тура" sahifasidan turlarni oladi (sayt va Telegram bot bilan umumiy kesh),
+ * so'ng topshiriq bo'yicha saralaydi: kurort/shahar, mehmonxona nomi, ovqatlanish, yulduz, byudjet. Himoya chetlab o'tilmaydi.
+ * .env da operator logini bo'lsa (OPERATOR_<ID>_LOGIN/_PASSWORD) — qidiruv agentlik kabineti orqali (server/live/samo.js),
+ * kirish holati Owner bazasiga yoziladi (websites.auth_status, last_successful_login; parol yozilmaydi).
  *
  * Sayt operatorlari (server/live OPERATORS) bilan Owner bazasidagi operatorlar id'lari: "vietra" -> "vietratour",
  * qolganlari bir xil. Jonli ulagichi yo'q operatorlar (Asialuxe, Pegas, Rezlive, ...) "Ulanmagan" bo'lib qoladi.
  */
 
 const { DESTINATIONS, countryCode } = require('../../js/agent-parser.js');
+const { hotelMatcher } = require('../live/hotel-match');
+const { hasCredentials } = require('../live/credentials');
 
 const SITE_TO_LIVE = {
   aqua: 'aqua', crystalbay: 'crystalbay', kompas: 'kompas', prestige: 'prestige', vietra: 'vietratour',
   fstravel: 'fstravel', kazunion: 'kazunion', centrum: 'centrum', flykhiva: 'flykhiva', easybooking: 'easybooking',
-  selfie: 'selfie', savtour: 'savtour', malva: 'malva'
+  selfie: 'selfie', savtour: 'savtour', malva: 'malva',
+  // faqat agentlik logini bilan (server/live/pegas.js, asialuxe.js): login .env da bo'lsagina ulanadi
+  pegas: 'pegas', asialuxe: 'asialuxe'
 };
+// Sekin kabinetlar: navbatdagi umumiy vaqt chegarasidan uzoqroq kutiladi
+const SLOW_TIMEOUT_MS = { pegas: 120000, asialuxe: 180000 };
 const MAX_OFFERS = 100;   // service.completeExecution chegarasi
 
 // Kurort nomi -> operator yozadigan shahar/hudud nomlari (so'z boshi bo'yicha). "Antalya" — butun Antaliya sohili.
@@ -36,7 +44,9 @@ const REGIONS = {
   bali: ['bali', 'бали', 'kuta', 'кута', 'nusa dua', 'нуса дуа', 'ubud', 'убуд', 'seminyak', 'семиньяк', 'jimbaran', 'джимбаран',
     'sanur', 'санур', 'canggu', 'чангу', 'legian', 'легиан'],
   dubai: ['dubai', 'дубай', 'дубаи', 'deira', 'дейра', 'jumeirah', 'джумейр', 'bur dubai', 'бур дубай'],
-  'nha trang': ['nha trang', 'нячанг', 'нья чанг', 'cam ranh', 'камрань']
+  'nha trang': ['nha trang', 'нячанг', 'нья чанг', 'cam ranh', 'камрань'],
+  'phu quoc': ['phu quoc', 'фукуок', 'фу куок', 'duong dong', 'зыонг донг'],
+  'da nang': ['da nang', 'danang', 'дананг', 'да нанг', 'hoi an', 'хойан', 'хой ан']
 };
 // Butun davlat bitta kurort (Maldiv orollari) — filtr qo'llanmaydi
 const WHOLE_COUNTRY = new Set(['mv']);
@@ -104,6 +114,11 @@ function selectOffers(offers, parameters, { uzsRate, limit }) {
   const before = list.length;
   if (matchesPlace) list = list.filter(matchesPlace);
   const placeFiltered = !!matchesPlace && before > 0 && list.length === 0;
+  // Topshiriqda mehmonxona nomi bo'lsa — faqat shu mehmonxona paketlari
+  const matchesHotel = parameters.hotelName ? hotelMatcher(parameters.hotelName) : null;
+  const beforeHotel = list.length;
+  if (matchesHotel) list = list.filter(o => matchesHotel(o.hotel));
+  const hotelFiltered = !!matchesHotel && beforeHotel > 0 && list.length === 0;
   if (parameters.mealPlan) list = list.filter(o => o.meal === parameters.mealPlan || (parameters.mealPlan === 'AI' && o.meal === 'UAI'));
   if (parameters.hotelStars) list = list.filter(o => o.stars >= parameters.hotelStars);
   if (parameters.budget) {
@@ -114,7 +129,7 @@ function selectOffers(offers, parameters, { uzsRate, limit }) {
   // Qidiruv ±3 kun (saytdagidek); chegara bo'lsa — aynan so'ralgan kundagilar birinchi, keyin eng arzoni
   const offDay = (o) => (o.checkIn === parameters.date ? 0 : 1);
   list.sort((a, b) => offDay(a) - offDay(b) || a.price - b.price || (a.avail === 'req') - (b.avail === 'req'));
-  return { offers: list.slice(0, limit), placeFiltered, soldOut };
+  return { offers: list.slice(0, limit), placeFiltered, hotelFiltered, soldOut };
 }
 
 function liveParams(parameters) {
@@ -124,6 +139,9 @@ function liveParams(parameters) {
     adults: String(parameters.adults), from: parameters.departureAirport || 'tas', window: '3'
   };
   if ((parameters.childrenAges || []).length) params.children = parameters.childrenAges.join(',');
+  if (parameters.hotelName) params.hotel = parameters.hotelName;    // operatorning o'zida mehmonxona filtri
+  // Kurort nomi: ko'p shaharli operator (Asialuxe) avval shu shaharni qidiradi; butun davlat bo'lsa — uzatilmaydi
+  if (parameters.destination && countryCode(parameters.destination) !== parameters.country) params.city = parameters.destination;
   return params;
 }
 
@@ -141,31 +159,43 @@ function registerLiveWorkers({ live, service, workers, maxOffers = 30, uzsRate =
   const liveOps = new Map((live.OPERATORS || []).map(op => [op.id, op]));
   const known = new Set(service.listWebsites().map(site => site.id));
   const registered = [];
+  // Kabinetga kirish holati (parolsiz) Owner bazasiga: login yo'q / kutilmoqda / kirildi / kirib bo'lmadi
+  function reportAuth(siteId, liveId) {
+    if (typeof live.authStatus !== 'function' || typeof service.markAuthStatus !== 'function') return;
+    try {
+      const info = live.authStatus(liveId) || {};
+      service.markAuthStatus(siteId, info.status, { at: info.at, error: info.error });
+    } catch (error) { /* holat yozilmasa ham qidiruv natijasi buzilmaydi */ }
+  }
   Object.entries(SITE_TO_LIVE).forEach(([siteId, liveId]) => {
     const operator = liveOps.get(liveId);
     if (!operator || !known.has(siteId) || workers.get(siteId)) return;
+    if (operator.loginOnly && !hasCredentials(liveId)) return;          // loginsiz qidirib bo'lmaydi — "Ulanmagan" qoladi
     workers.register({
       operatorId: siteId,
-      workerType: 'samo-live',
+      workerType: (operator.adapter || 'samo') + '-live',
+      timeoutMs: SLOW_TIMEOUT_MS[liveId],
       supports: parameters => !!parameters && typeof parameters.country === 'string',
       async execute(context) {
         const parameters = context.task.parameters;
         const started = now();
         if (context.signal.aborted) throw workerError('worker_aborted');
         const result = await live.searchOne('tours', liveId, liveParams(parameters));
+        reportAuth(siteId, liveId);
         if (context.signal.aborted) throw workerError('worker_aborted');
         if (result.status === 'error' || result.status === 'busy') throw workerError(result.error || 'upstream_unavailable');
         const picked = selectOffers(result.offers || [], parameters, { uzsRate, limit });
         context.log(result.cached ? 'search_cached' : 'search_done', { recordCount: Math.min(1000, (result.offers || []).length), durationMs: now() - started });
-        // Natija yo'qligi sababi jurnalda: no_country (operator bu davlatga sotmaydi), no_departure, empty, closed, ...
+        // Natija yo'qligi sababi jurnalda: no_country (operator bu davlatga sotmaydi), no_hotel (bu mehmonxona yo'q), empty, closed, ...
         if (!picked.offers.length) {
-          context.log(picked.soldOut ? 'no_seats' : picked.placeFiltered ? 'destination_no_match'
+          context.log(picked.soldOut ? 'no_seats' : picked.placeFiltered ? 'destination_no_match' : picked.hotelFiltered ? 'hotel_no_match'
             : result.status === 'ok' ? 'no_match_filters' : 'no_offers_' + String(result.status || 'empty').replace(/[^a-z0-9_-]/gi, ''), {});
         }
         return { offers: picked.offers.map(o => toAgentOffer(o, parameters, operator.search)) };
       }
     });
-    service.markWorkerConnected(siteId, 'samo');
+    service.markWorkerConnected(siteId, operator.adapter ? 'b2b' : 'samo');
+    if (typeof service.markAuthStatus === 'function') service.markAuthStatus(siteId, hasCredentials(liveId) ? 'pending' : 'none');
     registered.push(siteId);
   });
   return registered;

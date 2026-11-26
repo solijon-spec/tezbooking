@@ -58,6 +58,10 @@ function validateSearchParameters(input, now = Date.now()) {
     ? null
     : FROM_IDS.includes(input.departureAirport) ? input.departureAirport : false;
   if (departureAirport === false) return null;
+  // Mehmonxona nomi (ixtiyoriy): "CAMIA RESORT" — ishchilar faqat shu mehmonxonaning paketlarini qaytaradi
+  const hotelName = input.hotelName === undefined || input.hotelName === null ? ''
+    : typeof input.hotelName === 'string' ? input.hotelName.replace(/\s+/g, ' ').trim() : false;
+  if (hotelName === false || hotelName.length > 80) return null;
 
   return {
     destination,
@@ -70,7 +74,8 @@ function validateSearchParameters(input, now = Date.now()) {
     currency,
     hotelStars: stars,
     mealPlan,
-    departureAirport
+    departureAirport,
+    hotelName: hotelName || null
   };
 }
 
@@ -214,6 +219,29 @@ function createOwnerService({ db, now = Date.now, emit = () => {} }) {
       worker_status = CASE WHEN worker_status = 'pending' THEN 'idle' ELSE worker_status END, updated_at = ? WHERE id = ?`,
     websiteType, now(), id);
     activity('website_connected', 'Operator worker registered; integration marked verified.', 'info', { websiteId: id, websiteType });
+    return true;
+  }
+
+  // Operator kabinetiga kirish holati (ishchi xabar beradi; login/parol bazaga yozilmaydi, faqat holat):
+  //   none — login berilmagan (ochiq sahifa), pending — login bor, hali kirilmagan,
+  //   authenticated — kirildi (at — kirish vaqti), failed — parol qabul qilinmadi yoki kabinet ochilmadi
+  const AUTH_STATUS = { none: 'not_configured', pending: 'required', authenticated: 'authenticated', failed: 'manual_action' };
+  function markAuthStatus(id, status, { at, error } = {}) {
+    const next = AUTH_STATUS[status];
+    const row = next && get('SELECT name, auth_status, last_successful_login FROM websites WHERE id = ?', id);
+    if (!row) return false;
+    const loginAt = next === 'authenticated' && Number.isFinite(at) ? at : null;
+    if (row.auth_status === next && (!loginAt || row.last_successful_login === loginAt)) return true;
+    if (loginAt) run('UPDATE websites SET auth_status = ?, last_successful_login = ?, updated_at = ? WHERE id = ?', next, loginAt, now(), id);
+    else run('UPDATE websites SET auth_status = ?, updated_at = ? WHERE id = ?', next, now(), id);
+    if (row.auth_status === next) return true;
+    if (next === 'authenticated') {
+      activity('website_authenticated', 'Logged in to the operator agency account.', 'info', { websiteId: id });
+    } else if (next === 'manual_action') {
+      const code = error === 'auth_unavailable' ? 'auth_unavailable' : 'auth_failed';
+      activity('website_auth_failed', 'Operator login failed; the worker searches the public page instead.', 'warning', { websiteId: id, error: code });
+      if (code === 'auth_failed') alert('website_auth_failed', 'warning', 'Login to ' + row.name + ' was not accepted. Check the operator login in .env.');
+    }
     return true;
   }
 
@@ -776,7 +804,7 @@ function createOwnerService({ db, now = Date.now, emit = () => {} }) {
   }
 
   return {
-    listWebsites, createWebsite, updateWebsite, markWorkerConnected, settings, updateSettings, createSearch, getTask, listTasks,
+    listWebsites, createWebsite, updateWebsite, markWorkerConnected, markAuthStatus, settings, updateSettings, createSearch, getTask, listTasks,
     transitionTask, transitionExecution, executionContext, listQueuedExecutions, claimExecution,
     heartbeatExecution, logWorkerEvent, completeExecution, failExecution, blockExecution, recoverInterruptedExecutions,
     cancelTask, listActivities, listAlerts, resolveAlert, listLogs, listOffers, overview, mainAgent,

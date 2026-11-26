@@ -3,3 +3,5 @@
 node_modules/
 # Bronlar bazasi (mijozlar ma'lumoti) — yuklamang
 data/
+# Hallmark dizayn vositasining ish fayllari (skrinshotlar, jurnal)
+.hallmark/

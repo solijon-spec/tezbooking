@@ -1,9 +1,13 @@
 /*
- * TezBooking — SAMO-Tour Online ulagichi (operatorning OCHIQ qidiruv sahifasi, login'siz).
+ * TezBooking — SAMO-Tour Online ulagichi (operatorning "Поиск тура" sahifasi).
  *
  * Ko'p tur operatorlar (Prestige, Kazunion, Selfie, Savtour, Vietratour, ...) SAMO tizimida ishlaydi va
  * "Поиск тура" sahifasi agentliklar uchun ochiq. Bu ulagich o'sha sahifa brauzerga beradigan so'rovni yuboradi
- * (samo_action=PRICES) va javobdagi narx qatorlarini o'qiydi. Kabinetga kirilmaydi, hech qanday himoya chetlab o'tilmaydi.
+ * (samo_action=PRICES) va javobdagi narx qatorlarini o'qiydi. Hech qanday himoya chetlab o'tilmaydi.
+ *
+ * Agentlik kabineti: .env da operator logini bo'lsa (server/live/credentials.js), qidiruvdan oldin agentlikning
+ * o'z login/paroli bilan oddiy kirish formasi orqali kiriladi (samo_action=logon) va qidiruv kabinet sessiyasida bajariladi.
+ * Kirib bo'lmasa (noto'g'ri parol) — 30 daqiqa qayta urinilmaydi (hisob bloklanmasin), qidiruv ochiq sahifa orqali davom etadi.
  *
  * Operator API kalitini bergach, shu fayl o'rniga rasmiy SAMO export API'si ulanadi — natija formati o'zgarmaydi.
  *
@@ -14,6 +18,8 @@
 'use strict';
 
 const { createSafeFetch } = require('./safe-http');
+const { createAuth, authError, mergeCookies, setCookiesOf } = require('./auth');
+const { hotelMatcher } = require('./hotel-match');
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140 Safari/537.36 TezBooking/1.0';
 const TIMEOUT = Number(process.env.LIVE_TIMEOUT_MS) || 25000;
 const safeFetch = createSafeFetch({ timeoutMs: TIMEOUT });
@@ -70,21 +76,33 @@ function availOf(cls) {
   if (m.includes('R')) return 'req';
   return 'stop';
 }
-function seatsOf(html) {
-  const m = [...html.matchAll(/fr_place_[rl]\s+([A-Z])/g)].map(x => x[1]);
-  if (!m.length) return 'ok';
-  if (m.every(x => x === 'Y')) return 'ok';
-  if (m.some(x => x === 'N' || x === 'F')) return 'none';
+// Reysdagi joy (borish va qaytish). Operatorning o'z yozuvi (title) birinchi: "есть места" / "мало мест" / "нет мест".
+// Harf kodi faqat yozuv bo'lmasa: Y — bor, N — yo'q, F — kam ("мало мест", 2026-11-26 da Kazunion, FS Travel'da tekshirilgan),
+// boshqa harf (R — so'rov bo'yicha, L) — kam deb olinadi. Oldin F "yo'q" deb o'qilib, kam joyli turlar chiqarib tashlanardi.
+function seatState(code, title) {
+  const t = String(title || '').toLowerCase();
+  if (/нет мест|no seats|joy yo/.test(t)) return 'none';
+  if (/мало|few|kam/.test(t)) return 'few';
+  if (/есть|available|bor/.test(t)) return 'ok';
+  if (code === 'Y') return 'ok';
+  if (code === 'N') return 'none';
   return 'few';
+}
+function seatsOf(html) {
+  const m = [...html.matchAll(/<[^>]*\bfr_place_[rl]\s+([A-Z])\b[^>]*>/g)].map(x => seatState(x[1], (x[0].match(/title="([^"]*)"/) || [])[1]));
+  if (!m.length) return 'ok';
+  if (m.some(s => s === 'none')) return 'none';
+  if (m.some(s => s === 'few')) return 'few';
+  return 'ok';
 }
 
 // ---------- So'rovlar (har bir operator uchun cookie sessiyasi) ----------
 const sessions = new Map();          // opId|page -> { base, cookie, at }
 const metaCache = new Map();         // opId|shahar -> { states, at }  (davlatlar ro'yxati, 6 soat)
 
-async function http(op, url, opts, signal) {
+async function http(op, url, opts, signal, fetchImpl = safeFetch) {
   const allowedOrigin = new URL(op.search).origin;
-  const r = await safeFetch(url, Object.assign({ signal, allowedOrigin }, opts));
+  const r = await fetchImpl(url, Object.assign({ signal, allowedOrigin }, opts));
   if (!r.ok) {
     const error = new Error('supplier request failed');
     error.code = 'LIVE_UPSTREAM_STATUS';
@@ -92,6 +110,49 @@ async function http(op, url, opts, signal) {
     throw error;
   }
   return r;
+}
+
+// ---------- Agentlik kabinetiga kirish (SAMO "logon" formasi) ----------
+const LOGIN_FORM = /id="loginForm"/;
+
+// Bitta kirish: kabinet sahifasi (cookie + logon_key) -> forma POST -> kabinetni qayta ochib tekshirish.
+// Natija — kabinet sessiyasi cookie'si. Parol faqat operatorning o'z saytiga, forma tanasida yuboriladi.
+async function logon(op, creds, signal, fetchImpl = safeFetch) {
+  const origin = new URL(op.search).origin;
+  const url = origin + '/cl_refer';
+  const headers = { 'User-Agent': UA, Accept: 'text/html' };
+  let r = await http(op, url, { headers }, signal, fetchImpl);
+  let cookie = mergeCookies('', setCookiesOf(r));
+  const page = await r.text();
+  if (!LOGIN_FORM.test(page)) throw authError('LIVE_AUTH_NO_FORM');
+  const key = (page.match(/name="logon_key"[^>]*value="([^"]*)"/) || [])[1] || '';
+  const body = new URLSearchParams({
+    logon_type: 'agency', samo_action: 'logon', logon_key: key, login: creds.login, password: creds.password
+  }).toString();
+  r = await fetchImpl(url, {
+    method: 'POST', body, redirect: 'manual', signal, allowedOrigin: origin,
+    headers: Object.assign({}, headers, { 'Content-Type': 'application/x-www-form-urlencoded', Origin: origin, Referer: url, Cookie: cookie })
+  });
+  if (r.status >= 400) throw Object.assign(new Error('supplier request failed'), { code: 'LIVE_UPSTREAM_STATUS', status: r.status });
+  cookie = mergeCookies(cookie, setCookiesOf(r));
+  // Kirgan bo'lsak kabinetda login formasi qolmaydi
+  r = await http(op, url, { headers: Object.assign({}, headers, { Cookie: cookie }) }, signal, fetchImpl);
+  cookie = mergeCookies(cookie, setCookiesOf(r));
+  if (LOGIN_FORM.test(await r.text())) throw authError('LIVE_AUTH_FAILED');
+  return cookie;
+}
+
+// Kabinet sessiyalari (server/live/auth.js): 20 daqiqa, noto'g'ri parol — 30 daqiqa qayta urinilmaydi
+const auth = createAuth({ logon });
+// Operatorning kabinet cookie'si ('' — login yo'q yoki kirib bo'lmadi: qidiruv ochiq sahifa orqali)
+const authCookie = (op, signal, opts) => auth.session(op, signal, opts);
+// Kirish holati (parolsiz): none — login berilmagan, pending — hali kirilmagan, authenticated | failed
+const authStatus = (id, env) => auth.status(id, env);
+// Login almashtirilganda (yoki testlarda) kabinet sessiyasini unutish
+function resetAuth(id) {
+  auth.reset(id);
+  if (id) [...sessions.keys()].filter(k => k.startsWith(id + '|')).forEach(k => sessions.delete(k));
+  else sessions.clear();
 }
 // page: search_tour (turlar) | search_hotel (faqat mehmonxona) | tickets (aviachiptalar)
 const pageUrl = (op, page) => (page === 'search_tour' ? op.search : op.search.replace(/[^/]*$/, page));
@@ -104,8 +165,11 @@ async function session(op, signal, page) {
   const sk = op.id + '|' + page;
   const s = sessions.get(sk);
   if (s && Date.now() - s.at < 20 * 60000) return s;
-  const r = await http(op, pageUrl(op, page), { headers: { 'User-Agent': UA, Accept: 'text/html' } }, signal);
-  const cookie = (r.headers.getSetCookie ? r.headers.getSetCookie() : []).map(c => c.split(';')[0]).join('; ');
+  const loggedIn = await authCookie(op, signal);       // '' — loginsiz (ochiq sahifa)
+  const headers = { 'User-Agent': UA, Accept: 'text/html' };
+  if (loggedIn) headers.Cookie = loggedIn;
+  const r = await http(op, pageUrl(op, page), { headers }, signal);
+  const cookie = mergeCookies(loggedIn, setCookiesOf(r));
   const html = await r.text();
   // Jo'nash shaharlari va davlatlar sahifaning o'zida: <select name="TOWNFROMINC"> <option value="1853">Ташкент</option>
   const ns = { base: r.url.split('?')[0], cookie, towns: selectOptions(html, 'TOWNFROMINC'), states: selectOptions(html, 'STATEINC'), at: Date.now() };
@@ -125,6 +189,18 @@ async function states(op, townInc, signal) {
   const st = options(await samo(op, 'samo_action=TOWNFROMINC&TOWNFROMINC=' + townInc, signal), 'STATEINC');
   metaCache.set(k, { states: st, at: Date.now() });
   return st;
+}
+// Davlatdagi mehmonxonalar ro'yxati (davlat tanlanganda sahifa oladigan "samo.hotelDynamic = [{"id":..,"name":..}]"), 6 soat keshda
+async function hotelsOf(op, townInc, stateInc, signal) {
+  const k = op.id + '|' + townInc + '|' + stateInc + '|hotels', c = metaCache.get(k);
+  if (c && Date.now() - c.at < 6 * 3600000) return c.hotels;
+  const js = await samo(op, 'samo_action=STATEINC&TOWNFROMINC=' + townInc + '&STATEINC=' + stateInc, signal);
+  const hotels = [];
+  for (const m of js.matchAll(/\{"id":(\d+),"name":"((?:[^"\\]|\\.)*)"/g)) {
+    try { hotels.push({ id: m[1], name: JSON.parse('"' + m[2] + '"') }); } catch (e) { /* buzilgan nom — o'tkazib yuboriladi */ }
+  }
+  metaCache.set(k, { hotels, at: Date.now() });
+  return hotels;
 }
 async function departure(op, from, signal) {
   const s = await session(op, signal);
@@ -196,6 +272,13 @@ async function search(op, q) {
     const want = (COUNTRY_RU[q.country] || []).map(norm);
     const st = (await states(op, town.inc, ctl.signal)).find(s => want.includes(norm(s.title)));
     if (!st) return { offers: [], note: 'no_country' };
+    // Mehmonxona nomi berilgan bo'lsa — operatorning o'zida shu mehmonxonalar bo'yicha qidiruv (natija 1-sahifaga sig'adi)
+    const matchHotel = q.hotel ? hotelMatcher(q.hotel) : null;
+    let hotelIds = null;
+    if (matchHotel) {
+      hotelIds = (await hotelsOf(op, town.inc, st.inc, ctl.signal)).filter(h => matchHotel(h.name)).map(h => h.id).slice(0, 40);
+      if (!hotelIds.length) return { offers: [], note: 'no_hotel' };
+    }
     const ages = (q.childAges || []).slice(0, 4);
     // Bitta so'rovda tanlangan kun ±3 kun (sayt kunlar tasmasi uchun ham)
     const shift = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -209,9 +292,11 @@ async function search(op, q) {
     });
     ages.forEach((a, i) => qs.set('AGES' + (i + 1), String(a)));
     if (ages.length) qs.set('AGES', ages.join(','));
+    if (hotelIds) { qs.set('HOTELS', hotelIds.join(',')); qs.set('HOTELS_ANY', '0'); }
     const js = await samo(op, qs.toString(), ctl.signal);
     if (/временно недоступен/.test(unescapeJs(js))) return { offers: [], note: 'closed' };
-    const offers = parseRows(op, js).filter(o => o.checkIn >= beg && o.checkIn <= end && o.nights === q.nights);
+    const offers = parseRows(op, js).filter(o => o.checkIn >= beg && o.checkIn <= end && o.nights === q.nights
+      && (!matchHotel || matchHotel(o.hotel)));          // operator filtrni e'tiborsiz qoldirsa ham — faqat so'ralgan mehmonxona
     return { offers, note: offers.length ? '' : 'empty' };
   } finally { clearTimeout(timer); }
 }
@@ -350,4 +435,7 @@ async function searchFlights(op, q) {
   } finally { clearTimeout(timer); }
 }
 
-module.exports = { search, searchHotels, searchFlights, parseRows, mealCode, seatsCode, COUNTRY_RU, FROM_RU, GDS_RE };
+module.exports = {
+  search, searchHotels, searchFlights, parseRows, mealCode, seatsCode, seatsOf, COUNTRY_RU, FROM_RU, GDS_RE,
+  logon, authCookie, authStatus, resetAuth, mergeCookies
+};
