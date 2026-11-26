@@ -425,7 +425,9 @@
   const LIVE_KEY = 'tezbooking.liveHotels';
   // Oxirgi qism: jo'nash shahri (tur) yoki 'H' (faqat mehmonxona — reyssiz)
   const tailOf = (q) => (q.noFlight ? 'H' : q.from);
-  const liveSig = (country, q, dateIso) => [country, dateIso, q.nights, q.adults, (q.childAges || []).join('.'), tailOf(q)].join('|');
+  // Mehmonxona bo'yicha qidiruv (q.hotel) alohida kesh: umumiy natija bilan aralashmasin
+  const liveSig = (country, q, dateIso) => [country, dateIso, q.nights, q.adults, (q.childAges || []).join('.'), tailOf(q)].join('|')
+    + (q.hotel ? '|h:' + String(q.hotel).toLowerCase().replace(/\s+/g, ' ').trim() : '');
   const slug = (s) => String(s).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/g, '');
   // Diqqat: nomi hash() emas — aks holda yuqoridagi hash() ni almashtirib, rnd() doim 0 qaytaradi (barcha demo takliflar yashirinadi)
   const hash36 = (s) => hash(String(s)).toString(36);
