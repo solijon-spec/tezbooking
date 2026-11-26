@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TezBooking: tur agentliklar uchun operatorlar narxi bitta jadvalda</title>
+  <meta name="description" content="TezBooking tur agentliklarga oʻn ikki turoperatorning jonli narxlarini bitta qidiruvda, eng arzonini birinchi koʻrsatadi.">
+  <link rel="icon" href="images/favicon-32.png?v=20261120a" sizes="32x32" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;500;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/landing/landing.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+  <a class="skip" href="#main">Asosiy qismga oʻtish</a>
+
+  <header class="nav-wrap">
+    <nav class="nav container" aria-label="Asosiy">
+      <a class="nav__mark" href="landing.html" aria-label="TezBooking, bosh sahifa">TezBooking</a>
+      <ul class="nav__links">
+        <li><a href="#tablo">Qanday ishlaydi</a></li>
+        <li><a href="#tarif">Tarif</a></li>
+      </ul>
+      <a class="btn btn--line nav__action" href="/">Roʻyxatdan oʻtish</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <!-- Hero: Banner, the results screen at work -->
+    <section class="hero">
+      <div class="container hero__grid">
+        <div class="hero__text">
+          <h1>Barcha operatorlar narxi bitta jadvalda.</h1>
+          <p class="lead">Tur agentliklar uchun: bitta qidiruv, oʻn ikki operator, eng arzoni birinchi.</p>
+          <div class="hero__actions">
+            <a class="btn btn--primary" href="/">Roʻyxatdan oʻtish</a>
+            <a class="btn btn--line" href="#tablo">Tabloni koʻrish</a>
+          </div>
+          <p class="hero__terms">Tarif 3 oydan: 450 000 soʻm.</p>
+        </div>
+        <figure class="hero__shot">
+          <div class="frame frame--wide" data-slot="hero" data-kind="product" data-alt="TezBooking qidiruv natijalari: BAA, 111 ta tur, Kazunion va Prestige narxlari">
+            <img src="images/screens/hero-results.png" width="1968" height="1230" alt="BAA boʻyicha natija: 111 ta tur, eng arzoni Red Castle Hotel Sharjah, 971 dollar, Kazunion" fetchpriority="high" style="object-position: 0% 0%">
+          </div>
+          <figcaption>26-noyabr, Toshkentdan BAA, 7 tun: haqiqiy natija.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Signature: the board, one real search routed through the operators -->
+    <section class="band band--ink tablo" id="tablo" aria-labelledby="tablo-h">
+      <div class="container">
+        <div class="head-split">
+          <h2 id="tablo-h">Bitta soʻrov, oʻn ikki kabinet.</h2>
+          <p class="lead">Siz qidirasiz. TezBooking har bir operatorni soʻraydi va javoblarni bitta jadvalga yigʻadi.</p>
+        </div>
+        <div class="map" role="group" aria-label="Qidiruv tizimi: soʻrov, operatorlar, natija">
+          <div class="plate plate--query">
+            <p class="plate__label">Soʻrov</p>
+            <dl class="query">
+              <div><dt>Qayerga</dt><dd>BAA</dd></div>
+              <div><dt>Qayerdan</dt><dd>Toshkent</dd></div>
+              <div><dt>Sana</dt><dd>3 dekabr</dd></div>
+              <div><dt>Tun</dt><dd>7</dd></div>
+              <div><dt>Mehmonlar</dt><dd>2 katta</dd></div>
+            </dl>
+          </div>
+          <table class="board">
+            <caption class="visually-hidden">Operatorlar va shu qidiruvdagi turlar soni</caption>
+            <thead><tr><th scope="col">Operator</th><th scope="col" class="num">Turlar</th></tr></thead>
+            <tbody>
+              <tr class="is-live"><th scope="row"><span class="sq" aria-hidden="true"></span>Kazunion</th><td class="num">82</td></tr>
+              <tr class="is-live"><th scope="row"><span class="sq" aria-hidden="true"></span>Prestige</th><td class="num">29</td></tr>
+              <tr><th scope="row"><span class="sq" aria-hidden="true"></span>Kompas Tour</th><td></td></tr>
+              <tr><th scope="row"><span class="sq" aria-hidden="true"></span>Crystal Bay</th><td></td></tr>
+              <tr><th scope="row"><span class="sq" aria-hidden="true"></span>FUN&amp;SUN</th><td></td></tr>
+              <tr><th scope="row"><span class="sq" aria-hidden="true"></span>Centrum Holidays</th><td></td></tr>
+              <tr><th scope="row"><span class="sq" aria-hidden="true"></span>Vietra Tour</th><td></td></tr>
+              <tr><th scope="row"><span class="sq" aria-hidden="true"></span>Easybooking</th><td></td></tr>
+              <tr><th scope="row"><span class="sq" aria-hidden="true"></span>Fly Khiva</th><td></td></tr>
+              <tr><th scope="row"><span class="sq" aria-hidden="true"></span>Selfie Travel</th><td></td></tr>
+              <tr><th scope="row"><span class="sq" aria-hidden="true"></span>Savtour</th><td></td></tr>
+              <tr><th scope="row"><span class="sq" aria-hidden="true"></span>Malva Tour</th><td></td></tr>
+            </tbody>
+          </table>
+          <div class="plate plate--result">
+            <p class="plate__label">Jadval</p>
+            <p class="result__figure"><span class="figure">111</span> ta tur</p>
+            <p class="result__line">Eng arzoni <span class="figure">$971</span>, Kazunion.</p>
+          </div>
+        </div>
+        <p class="band__note">26-noyabr qidiruvi. Qolgan oʻn operatorda shu kunlarga tur chiqmadi.</p>
+      </div>
+    </section>
+
+    <!-- The product at work: a pinned run of three screens -->
+    <section class="pin" id="ish" aria-labelledby="ish-h">
+      <div class="container">
+        <h2 id="ish-h" class="pin__head">Qidiruvdan mijozgacha uch ekran.</h2>
+        <div class="pin__grid">
+          <ol class="pin__steps">
+            <li class="pin__step" data-step="0">
+              <h3>Qidiring</h3>
+              <p>Davlat, sana, tun va mehmonlar. Oʻn ikki uchish shahri, Toshkentdan Nukusgacha.</p>
+              <div class="frame frame--wide pin__inline" data-slot="screen-search-m" data-kind="product" data-alt="Qidiruv formasi">
+                <img src="images/screens/search.png" width="2880" height="1800" alt="" loading="lazy" style="object-position: 0% 0%">
+              </div>
+            </li>
+            <li class="pin__step" data-step="1">
+              <h3>Solishtiring</h3>
+              <p>Har turda operator, ovqat, xona va reysdagi joy. Batafsil oynada narxga nima kirishi.</p>
+              <div class="frame frame--wide pin__inline" data-slot="screen-details-m" data-kind="product" data-alt="Batafsil oynasi">
+                <img src="images/screens/details-crop.png" width="1840" height="1140" alt="" loading="lazy" style="object-position: 0% 0%">
+              </div>
+            </li>
+            <li class="pin__step" data-step="2">
+              <h3>Mijozga yuboring</h3>
+              <p>Mijoz faqat sizning narxingizni koʻradi, operator nomini emas.</p>
+              <div class="frame frame--wide pin__inline" data-slot="screen-offer-m" data-kind="product" data-alt="Mijozga taklif">
+                <img src="images/screens/offer-crop.png" width="2380" height="1000" alt="" loading="lazy" style="object-position: 0% 0%">
+              </div>
+            </li>
+          </ol>
+          <div class="pin__stage" aria-hidden="true">
+            <div class="frame frame--wide pin__frame">
+              <div class="pin__shot is-on" data-shot="0" data-slot="screen-search" data-kind="product" data-alt="Qidiruv formasi: davlatlar, sana, tun, mehmonlar">
+                <img src="images/screens/search.png" width="2880" height="1800" alt="" loading="lazy" style="object-position: 0% 0%">
+              </div>
+              <div class="pin__shot" data-shot="1" data-slot="screen-details" data-kind="product" data-alt="Batafsil oynasi: tanlangan variant va narx">
+                <img src="images/screens/details-crop.png" width="1840" height="1140" alt="" loading="lazy" style="object-position: 0% 0%">
+              </div>
+              <div class="pin__shot" data-shot="2" data-slot="screen-offer" data-kind="product" data-alt="Mijozga taklif: uch variant">
+                <img src="images/screens/offer-crop.png" width="2380" height="1000" alt="" loading="lazy" style="object-position: 0% 0%">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- The integration: the Telegram bot as a route of three plates -->
+    <section class="bot" id="bot" aria-labelledby="bot-h">
+      <div class="container">
+        <div class="head-split">
+          <h2 id="bot-h">Kanalingizga post, uch buyruqda.</h2>
+          <p class="lead">Telegram bot <a href="https://t.me/tezbooking_bot">@tezbooking_bot</a> operatorlarning haqiqiy narxlaridan post tuzadi.</p>
+        </div>
+        <ol class="route">
+          <li class="route__plate">
+            <p class="route__cmd">/link 123456</p>
+            <p>Saytdagi kod bilan botni firmangizga ulang.</p>
+          </li>
+          <li class="route__plate">
+            <p class="route__cmd">Post yaratish</p>
+            <p>Davlat, tun va sana: bot eng arzon sakkiz turni koʻrsatadi.</p>
+          </li>
+          <li class="route__plate">
+            <p class="route__cmd">Kanalga joylash</p>
+            <p>Firma foizi, telefon va rasm bilan, bir tugmada.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Pricing: periods as a table, the action beside it -->
+    <section class="band band--paper tarif" id="tarif" aria-labelledby="tarif-h">
+      <div class="container tarif__grid">
+        <div class="tarif__head">
+          <h2 id="tarif-h">Tarif: muddatni tanlang.</h2>
+          <p>Mijoz narxiga oʻz foizingizni qoʻshasiz, 0 dan 50 gacha.</p>
+          <a class="btn btn--primary" href="/">Roʻyxatdan oʻtish</a>
+        </div>
+        <table class="prices">
+          <caption class="visually-hidden">Tarif narxlari, soʻmda</caption>
+          <thead><tr><th scope="col">Muddat</th><th scope="col" class="num">Narx</th><th scope="col" class="num">Oyiga</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">3 oy</th><td class="num">450 000 soʻm</td><td class="num">150 000 soʻm</td></tr>
+            <tr><th scope="row">6 oy</th><td class="num">800 000 soʻm</td><td class="num">133 333 soʻm</td></tr>
+            <tr><th scope="row">12 oy</th><td class="num">1 400 000 soʻm</td><td class="num">116 667 soʻm</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="foot">
+    <div class="container foot__grid">
+      <p class="foot__mark">TezBooking</p>
+      <p class="foot__colophon">Tur agentliklar uchun qidiruv: turlar, mehmonxonalar va aviachiptalar. Sayt oʻzbek, rus va ingliz tillarida, narx dollar yoki soʻmda.</p>
+      <ul class="foot__links">
+        <li><a href="/">Qidiruv</a></li>
+        <li><a href="https://t.me/tezbooking_bot">Telegram bot</a></li>
+      </ul>
+      <p class="foot__legal">© 2026 TezBooking</p>
+    </div>
+  </footer>
+
+  <script>
+  // Pinned run: the step in view decides which screen the stage shows (stays on the first without script)
+  (() => {
+    const steps = document.querySelectorAll('.pin__step');
+    const shots = document.querySelectorAll('.pin__shot');
+    if (!steps.length || !('IntersectionObserver' in window)) return;
+    const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+      if (!e.isIntersecting) return;
+      const n = e.target.dataset.step;
+      shots.forEach((s) => s.classList.toggle('is-on', s.dataset.shot === n));
+    }), { rootMargin: '-45% 0px -45% 0px' });
+    steps.forEach((s) => io.observe(s));
+  })();
+  </script>
+  <script>window.hallmarkSlots = (m) => { for (const [k, v] of Object.entries(m)) { const s = document.querySelector(`[data-slot="${k}"]`); if (!s) continue; const im = new Image(); im.src = typeof v === 'string' ? v : v.src; im.alt = (typeof v === 'object' && v.alt) || s.dataset.alt || ''; s.querySelectorAll(':scope > img').forEach((o) => o.remove()); s.prepend(im); } };
+document.querySelectorAll('[data-slot] img').forEach((i) => { if (i.complete && !i.naturalWidth) i.remove(); else i.addEventListener('error', () => i.remove(), { once: true }); });</script>
+</body>
+</html>
